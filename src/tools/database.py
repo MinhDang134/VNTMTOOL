@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from typing import Generator
 from src.tools.config import settings
 import logging
-
+from sqlalchemy import text
 # Tạo engine kết nối đến PostgreSQL
 engine = create_engine(
     settings.DATABASE_URL,
@@ -114,7 +114,6 @@ def ensure_partition_exists(date: datetime) -> None:
     with engine.connect() as conn:
         try:
             # Kiểm tra xem partition đã tồn tại chưa
-            from cgitb import text
             check_query = text(f"""
                 SELECT EXISTS (
                     SELECT 1 
