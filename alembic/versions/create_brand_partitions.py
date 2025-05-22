@@ -1,32 +1,31 @@
 from alembic import op
 from datetime import datetime, timedelta
 
+
 def upgrade():
-    # Create partitioned table
     op.execute("""
-        CREATE TABLE brand (
-            id SERIAL,
-            brand_name VARCHAR,
-            image_url VARCHAR,
-            product_group VARCHAR,
-            status VARCHAR,
-            application_date TIMESTAMP,
-            application_number VARCHAR,
-            applicant VARCHAR,
-            representative VARCHAR,
-            created_at TIMESTAMP,
-            updated_at TIMESTAMP,
-            PRIMARY KEY (id, application_date)
-        ) PARTITION BY RANGE (application_date);
-    """)
-    
-    # Create partitions for next 12 months
-    current_date = datetime.now()
+               CREATE TABLE brand
+               (
+                   id                 SERIAL,
+                   brand_name         TEXT,
+                   image_url          TEXT,
+                   product_group      TEXT,
+                   status             TEXT,
+                   application_date   DATE,
+                   application_number TEXT,
+                   applicant          TEXT,
+                   representative     TEXT,
+                   created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                   updated_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+               ) PARTITION BY RANGE (application_date);
+               """)
+
+    current_date = datetime.now().replace(day=1)
     for i in range(12):
-        start_date = current_date + timedelta(days=30*i)
-        end_date = start_date + timedelta(days=30)
+        start_date = (current_date + timedelta(days=30 * i)).replace(day=1)
+        end_date = (start_date + timedelta(days=32)).replace(day=1)
         partition_name = f"brand_{start_date.strftime('%Y_%m')}"
-        
+
         op.execute(f"""
             CREATE TABLE {partition_name} 
             PARTITION OF brand 
@@ -34,5 +33,6 @@ def upgrade():
             TO ('{end_date.strftime('%Y-%m-%d')}');
         """)
 
+
 def downgrade():
-    op.drop_table('brand') 
+    op.execute("DROP TABLE brand CASCADE;")
