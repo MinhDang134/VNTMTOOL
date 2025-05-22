@@ -1,9 +1,10 @@
 import asyncio
 from datetime import datetime
-from src.tools.service import ScraperService
-from src.tools.database import get_session, create_tables
 import logging
-from src.tools.database import create_monthly_partitions
+
+from src.tools.service import ScraperService
+from src.tools.database import get_session
+from src.tools.database import ensure_partition_exists  # bạn nên tách logic partition ra file riêng như `partition.py`
 
 # Cấu hình logging
 logging.basicConfig(
@@ -12,7 +13,8 @@ logging.basicConfig(
 )
 
 async def run_scraper():
-    create_tables()
+    # ❌ Không cần gọi create_tables() nếu bạn đã tạo bảng partition thủ công
+    # create_tables()  # Gọi chỗ khác nếu cần cho các bảng khác
 
     scraper = ScraperService()
     start_date = datetime(2022, 1, 1)
@@ -20,14 +22,21 @@ async def run_scraper():
 
     with get_session() as session:
         try:
-            # 💡 Tạo partition trước khi insert
-            create_monthly_partitions(session, start_date, end_date)
+            logging.info(f"🚀 Bắt đầu scrape từ {start_date.date()} đến {end_date.date()}")
 
-            # Rồi mới scrape
+            # 👉 Gọi scraper
             brands = await scraper.scrape_by_date_range(start_date, end_date, session)
-            print(f"Đã scrape được {len(brands)} nhãn hiệu")
+
+            # 👉 Tạo partition (chỉ khi cần)
+            for brand in brands:
+                ensure_partition_exists(brand.application_date)
+                session.add(brand)
+
+            session.commit()
+            logging.info(f"✅ Đã scrape và lưu {len(brands)} nhãn hiệu thành công.")
+
         except Exception as e:
-            logging.error(f"Lỗi khi chạy scraper: {str(e)}")
+            logging.error(f"❌ Lỗi khi chạy scraper: {str(e)}")
 
 if __name__ == "__main__":
-    asyncio.run(run_scraper()) 
+    asyncio.run(run_scraper())
