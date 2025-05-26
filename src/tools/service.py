@@ -280,7 +280,7 @@ class ScraperService:
                     date_text_tag = row.select_one("td:nth-child(7)")
                     if not date_text_tag:
                         logging.warning(
-                            f"Row {row_idx + 1} on page {current_page}: Missing application_date tag, skipping.")
+                            f"Row {row_idx + 1} on page {current_page}: Thiếu thẻ application_date, đang bỏ qua.")
                         continue
                     date_text = date_text_tag.text.strip()
                     try:
