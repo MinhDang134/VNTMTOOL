@@ -16,28 +16,6 @@ engine = create_engine(
     max_overflow=10      # Số lượng kết nối tối đa có thể tạo thêm
 )
 
-# Tạo tất cả bảng trong database
-def create_tables():
-    pass
-    # SQLModel.metadata.create_all(engine)
-
-# Tạo các partition hàng tháng trong khoảng thời gian cho trước
-def create_monthly_partitions(session: Session, start: datetime, end: datetime):
-    current = start.replace(day=1)
-    while current < end:
-        if current.month == 12:
-            next_month = current.replace(year=current.year + 1, month=1, day=1)
-        else:
-            next_month = current.replace(month=current.month + 1, day=1)
-        table_name = f"brand_{current.strftime('%Y_%m')}"
-        sql = f"""
-        CREATE TABLE IF NOT EXISTS "{table_name}"
-        PARTITION OF brand
-        FOR VALUES FROM ('{current.date()}') TO ('{next_month.date()}');
-        """
-        session.exec(text(sql))
-        current = next_month
-
 # Context manager để quản lý session
 @contextmanager
 def get_session() -> Generator[Session, None, None]:
@@ -84,38 +62,7 @@ def bulk_delete(session: Session, objects: list[SQLModel]) -> None:
         logging.error(f"Bulk delete error: {str(e)}")
         raise
 
-# Tạo partition cho tháng kế tiếp nếu chưa tồn tại
-def create_next_month_partition() -> None:
-    next_month = datetime.now() + timedelta(days=30)
-    partition_name = f"brand_{next_month.strftime('%Y_%m')}"
-    start_date = next_month.replace(day=1)
-    end_date = (start_date + timedelta(days=32)).replace(day=1)
 
-    check_query = text("""
-        SELECT EXISTS (
-            SELECT 1 
-            FROM information_schema.tables 
-            WHERE table_name = :table_name AND table_schema = 'public'
-        );
-    """)
-    create_query = text(f"""
-        CREATE TABLE IF NOT EXISTS "{partition_name}" 
-        PARTITION OF brand 
-        FOR VALUES FROM ('{start_date.strftime('%Y-%m-%d')}') 
-        TO ('{end_date.strftime('%Y-%m-%d')}');
-    """)
-
-    try:
-        with engine.begin() as conn:
-            exists = conn.execute(check_query, {"table_name": partition_name}).scalar()
-            if not exists:
-                conn.execute(create_query)
-                logging.info(f"Created new partition: {partition_name}")
-    except Exception as e:
-        logging.error(f"Error creating partition: {str(e)}")
-        raise e
-
-# Trả về tên bảng phân vùng theo ngày cho trước
 def get_partition_name(date: datetime) -> str:
     return f"brand_{date.strftime('%Y_%m')}"
 

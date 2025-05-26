@@ -5,6 +5,7 @@
 # Bỏ qua các thư mục chứa dependencies (thư viện cài đặt)
 # Thường được quản lý bởi các package manager như npm, pip, composer, Maven, Gradle,...
 /node_modules/
+/media_root/
 /vendor/
 /bower_components/
 /.bundle/
