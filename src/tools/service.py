@@ -241,7 +241,7 @@ class ScraperService:
                 time_diff = datetime.now() - self.last_request_time
                 if time_diff.total_seconds() < request_interval_seconds:
                     sleep_duration = request_interval_seconds - time_diff.total_seconds()
-                    logger.info(f"Đạt giới hạn request. Nghỉ {sleep_duration:.2f} giây.")
+                    logging.info(f"Đạt giới hạn request. Nghỉ {sleep_duration:.2f} giây.")
                     await asyncio.sleep(sleep_duration)
                 self.request_count = 0
                 self.last_request_time = datetime.now()
@@ -257,13 +257,13 @@ class ScraperService:
             if not response:
                 logging.error(
                     f"Không nhận được phản hồi cho trang {current_page} (URL: {url}). Dừng xử lý khoảng ngày này.")
-                break  # Thoát vòng lặp trang
+                break
 
             try:
                 soup = BeautifulSoup(response.text, 'html.parser')
             except Exception as e_soup:
                 logging.error(f"Lỗi khi parse HTML cho trang {current_page}: {e_soup}", exc_info=True)
-                break  # Thoát vòng lặp trang
+                break
 
             rows = soup.select("table.table tbody tr")
             if not rows:
@@ -391,82 +391,113 @@ class ScraperService:
         return brands_collected_in_this_run
 
     async def check_pending_brands(self, session: Session):
-        logging.info("Bắt đầu kiểm tra các thương hiệu đang chờ xử lý...")
-        statement = select(Brand).where(Brand.status == "Đang giải quyết")
+        # Sử dụng logger của class hoặc module, hoặc lấy logger mới
+        logger = logging.getLogger(f"{self.__class__.__name__}.check_pending_brands")
+
+        logger.info("Bắt đầu kiểm tra các đơn có trạng thái 'đang giải quyết'...")
+
+        # 1. Truy vấn dữ liệu từ hệ thống nội bộ
+        # Điều kiện: status == "đang giải quyết" (theo yêu cầu)
+        statement = select(Brand).where(Brand.status == "đang giải quyết")
         pending_brands: List[Brand] = session.exec(statement).all()
 
         if not pending_brands:
-            logging.info("Không tìm thấy thương hiệu nào có trạng thái 'Đang giải quyết'.")
+            logger.info("✅ Không tìm thấy đơn nào có trạng thái 'đang giải quyết' để kiểm tra.")
             return
 
-        logging.info(f"Found {len(pending_brands)} nhãn hiệu có trạng thái 'Đang giải quyết' để kiểm tra.")
+        logger.info(f"🔍 Tìm thấy {len(pending_brands)} đơn có trạng thái 'đang giải quyết' để kiểm tra.")
         updated_count = 0
+        processed_count = 0
 
-        min_delay_check = settings.MIN_DELAY_CHECK_PENDING
-        max_delay_check = settings.MAX_DELAY_CHECK_PENDING
+        # Cân nhắc thêm delay giữa các request để tránh làm quá tải server VietnamTrademark
+        # min_delay_check = getattr(settings, 'MIN_DELAY_CHECK_PENDING', 1.0) # Lấy từ config hoặc mặc định
+        # max_delay_check = getattr(settings, 'MAX_DELAY_CHECK_PENDING', 3.0)
 
         for brand_idx, brand in enumerate(pending_brands):
-            if brand_idx > 0:
-                await asyncio.sleep(random.uniform(min_delay_check, max_delay_check))
+            processed_count += 1
+            logger.info(
+                f"Đang xử lý đơn {brand_idx + 1}/{len(pending_brands)}: ID {brand.id}, Số đơn {brand.application_number}")
+
+            # if brand_idx > 0: # Thêm delay nếu muốn
+            #     await asyncio.sleep(random.uniform(min_delay_check, max_delay_check))
 
             if not brand.application_number:
-                logging.warning(f"Thương hiệu đang chờ xử lý với ID{brand.id} không có application_number. Đang bỏ qua.")
+                logger.warning(f"⚠️ Đơn có ID {brand.id} không có số đơn (application_number). Bỏ qua.")
                 continue
 
+            # 2. Gọi API hoặc gửi HTTP request đến VietnamTrademark
             url = f"https://vietnamtrademark.net/search?q={brand.application_number.strip()}"
-            logging.info(f"Checking brand ID {brand.id} (App No: {brand.application_number}) at {url}")
-            response = await self.make_request(url)
+            logger.info(f"🌍 Gọi đến VietnamTrademark: {url}")
+
+            response = await self.make_request(url)  # Sử dụng lại hàm make_request đã có
 
             if not response:
-                logging.warning(
-                    f"Không thể tìm kiếm thông tin chi tiết cho thương hiệu đang chờ xử lý {brand.application_number} (ID: {brand.id}).")
+                logger.warning(
+                    f"❌ Không nhận được phản hồi từ VietnamTrademark cho số đơn {brand.application_number} (ID: {brand.id}). Bỏ qua đơn này.")
                 continue
 
             try:
+                # 3. Phân tích kết quả HTML
                 soup = BeautifulSoup(response.text, 'html.parser')
                 target_row = None
+                # Selector cho bảng và các hàng, dựa trên cấu trúc HTML của trang kết quả
                 rows_on_page = soup.select("table.table tbody tr")
+                if not rows_on_page:
+                    logger.warning(
+                        f"📄 Không tìm thấy bảng/hàng dữ liệu nào trên trang kết quả cho số đơn {brand.application_number}.")
+                    continue
+
                 for r_check in rows_on_page:
+                    # Selector cho cột chứa số đơn (ví dụ: cột thứ 8, thẻ a)
                     app_num_tag_check = r_check.select_one("td:nth-child(8) a")
                     if app_num_tag_check and app_num_tag_check.text.strip() == brand.application_number:
                         target_row = r_check
                         break
 
                 if not target_row:
-                    logging.warning(
-                        f"Không tìm thấy hàng cho số ứng dụng {brand.application_number} trên trang kết quả tìm kiếm để kiểm tra đang chờ xử lý.")
+                    logger.warning(
+                        f"📄 Không tìm thấy hàng khớp với số đơn {brand.application_number} trên trang kết quả tìm kiếm.")
                     continue
 
+                # Trích xuất status mới từ HTML (ví dụ: td class 'trang-thai', span class 'badge')
                 status_tag = target_row.select_one("td.trang-thai span.badge")
                 if status_tag:
                     new_status = status_tag.text.strip()
+                    logger.info(
+                        f"📊 Trạng thái mới từ web cho {brand.application_number}: '{new_status}' (Trạng thái hiện tại trong DB: '{brand.status}')")
+
+                    # 4. So sánh và xác định đơn cần cập nhật
                     if new_status != brand.status:
                         old_status = brand.status
                         brand.status = new_status
-                        brand.updated_at = datetime.now(timezone.utc)  # Sửa: datetime.now(timezone.utc)
-                        session.add(brand)
+                        brand.updated_at = datetime.now(timezone.utc)  # Cập nhật thời gian
+                        session.add(brand)  # Đưa vào session để chuẩn bị commit
                         updated_count += 1
-                        logging.info(
-                            f"Trạng thái cho thương hiệu {brand.application_number} (ID: {brand.id}) UPDATED: '{old_status}' -> '{new_status}'")
+                        logger.info(
+                            f"🔄 CẬP NHẬT: Đơn {brand.application_number} (ID: {brand.id}) thay đổi trạng thái từ '{old_status}' -> '{new_status}'")
                     else:
-                        logging.debug(
-                            f"Trạng thái cho thương hiệu {brand.application_number} (ID: {brand.id}) is still '{brand.status}'. Không cần cập nhật.")
+                        logger.info(
+                            f"✅ Trạng thái cho đơn {brand.application_number} (ID: {brand.id}) không thay đổi ('{brand.status}').")
                 else:
-                    logging.warning(
-                        f"Không tìm thấy huy hiệu trạng thái cho {brand.application_number} (ID: {brand.id}) trong hàng của nó trên trang kết quả tìm kiếm để kiểm tra đang chờ xử lý.")
+                    logger.warning(
+                        f"📄 Không tìm thấy thẻ trạng thái (status_tag) cho số đơn {brand.application_number} (ID: {brand.id}) trong hàng tương ứng.")
 
             except Exception as e_check:
-                logging.error(
-                    f"Lỗi xử lý trạng thái cho thương hiệu {brand.application_number} (ID: {brand.id}): {str(e_check)}",
+                logger.error(
+                    f"❌ Lỗi khi xử lý/bóc tách trạng thái cho đơn {brand.application_number} (ID: {brand.id}): {str(e_check)}",
                     exc_info=True)
-                continue
+                continue  # Bỏ qua đơn này và tiếp tục với đơn khác
 
+        # 5. Cập nhật vào database (sau khi đã duyệt qua tất cả các đơn)
         if updated_count > 0:
             try:
                 session.commit()
-                logging.info(f"Đã cam kết cập nhật thành công cho {updated_count} pending brands.")
+                logger.info(f"💾 ĐÃ COMMIT THÀNH CÔNG: Cập nhật trạng thái cho {updated_count} đơn vào database.")
             except Exception as e_commit:
-                logging.error(f"Lỗi khi cam kết cập nhật cho các thương hiệu đang chờ xử lý: {e_commit}", exc_info=True)
-                session.rollback()
-        else:
-            logging.info("Không có cập nhật trạng thái nào được thực hiện cho các thương hiệu đang chờ xử lý sau khi kiểm tra.")
+                logger.error(f"❌ Lỗi khi commit các thay đổi trạng thái vào database: {e_commit}", exc_info=True)
+                session.rollback()  # Quan trọng: Rollback nếu có lỗi khi commit
+                logger.info("Đã rollback transaction do lỗi commit.")
+        elif processed_count > 0:  # Đã xử lý một số đơn nhưng không có đơn nào thay đổi trạng thái
+            logger.info("✅ Không có trạng thái đơn nào cần cập nhật sau khi kiểm tra toàn bộ danh sách.")
+
+        logger.info(f"Hoàn tất kiểm tra. Đã xử lý {processed_count} đơn, cập nhật {updated_count} đơn.")
