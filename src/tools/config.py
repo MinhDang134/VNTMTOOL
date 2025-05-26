@@ -51,16 +51,10 @@ class Settings(BaseSettings):
     PROXY_PASSWORD: Optional[str] = os.getenv("USER_PASSWORD") # Giữ USER_PASSWORD
 
 
-
-    # Media URLs (Thêm mới)
-
     LOCAL_MEDIA_BASE_URL: str = os.getenv("LOCAL_MEDIA_BASE_URL", "http://localhost:8000/media")
 
     SOURCE_WEBSITE_DOMAIN: str = os.getenv("SOURCE_WEBSITE_DOMAIN", "https://vietnamtrademark.net")
 
-
-
-    # Request params (Thêm mới và điều chỉnh)
 
     MAX_REQUEST_RETRIES: int = int(os.getenv("MAX_REQUEST_RETRIES", "3"))
 
@@ -73,18 +67,13 @@ class Settings(BaseSettings):
     DOWNLOAD_TIMEOUT: float = float(os.getenv("DOWNLOAD_TIMEOUT", "30.0"))
 
 
-
-    # Scraper delays and limits (Điều chỉnh từ REQUEST_LIMIT và REQUEST_DELAY của bạn)
-
-    # REQUEST_LIMIT của bạn là 10 requests per minute, ta sẽ chuyển thành interval
-
     REQUEST_LIMIT_PER_INTERVAL: int = int(os.getenv("REQUEST_LIMIT", os.getenv("REQUEST_LIMIT_PER_INTERVAL", "20"))) # Sử dụng REQUEST_LIMIT của bạn nếu có
 
     REQUEST_INTERVAL_SECONDS: int = int(os.getenv("REQUEST_INTERVAL_SECONDS", "60")) # 60 giây cho REQUEST_LIMIT ở trên
 
 
 
-    # REQUEST_DELAY của bạn là 0.1s, ta dùng nó làm MIN_DELAY, MAX_DELAY có thể lớn hơn một chút
+
 
     MIN_REQUEST_DELAY: float = float(os.getenv("REQUEST_DELAY", os.getenv("MIN_REQUEST_DELAY", "0.5"))) # Sử dụng REQUEST_DELAY của bạn làm min
 

@@ -245,7 +245,7 @@ class ScraperService:
                 time_diff = datetime.now() - self.last_request_time
                 if time_diff.total_seconds() < request_interval_seconds:
                     sleep_duration = request_interval_seconds - time_diff.total_seconds()
-                    logging.info(f"Request limit reached. Sleeping for {sleep_duration:.2f} seconds.")
+                    logging.info(f"Đã đạt đến giới hạn yêu cầu. Đang ngủ {sleep_duration:.2f} giây.")
                     await asyncio.sleep(sleep_duration)
                 self.request_count = 0
                 self.last_request_time = datetime.now()
@@ -261,19 +261,19 @@ class ScraperService:
 
             if not response:
                 logging.error(
-                    f"Failed to get response for page {current_page} of date range {start_str}-{end_str}. Stopping for this range.")
+                        f"Không nhận được phản hồi cho trang {current_page} trong phạm vi ngày {start_str}-{end_str}. Dừng lại ở phạm vi này.")
                 break
 
             try:
                 soup = BeautifulSoup(response.text, 'html.parser')
             except Exception as e_soup:
-                logging.error(f"Error parsing HTML for page {current_page}: {e_soup}", exc_info=True)
+                logging.error(f"Lỗi khi phân tích cú pháp HTML cho trang{current_page}: {e_soup}", exc_info=True)
                 break
 
             rows = soup.select("table.table tbody tr")
             if not rows:
                 logging.info(
-                    f"No more data found on page {current_page} for date range {start_str}-{end_str} or page is empty.")
+                    f"Không tìm thấy thêm dữ liệu trên trang {current_page} trong phạm vi ngày{start_str}-{end_str} hoặc trang trống.")
                 break
 
             page_had_new_data = False
@@ -311,14 +311,14 @@ class ScraperService:
                             current_image_url_to_download = f"{SOURCE_WEBSITE_DOMAIN.rstrip('/')}{current_image_url_to_download}"
                         elif not current_image_url_to_download.lower().startswith(("http://", "https://")):
                             logging.warning(
-                                f"Image URL '{current_image_url_to_download}' is not absolute, attempting to prefix with domain.")
+                                f"Image URL '{current_image_url_to_download}' không phải là tuyệt đối, cố gắng thêm tiền tố vào tên miền.")
                             current_image_url_to_download = f"{SOURCE_WEBSITE_DOMAIN.rstrip('/')}/{current_image_url_to_download.lstrip('/')}"
 
                         saved_relative_image_path = await self.download_image(current_image_url_to_download)
                         if saved_relative_image_path:
                             final_image_url_for_db = f"{LOCAL_MEDIA_BASE_URL.rstrip('/')}/{saved_relative_image_path.lstrip('/')}"
                     else:
-                        logging.debug(f"Row {row_idx + 1} on page {current_page}: No image_url_original found.")
+                        logging.debug(f"Row {row_idx + 1} on page {current_page}: Không tìm thấy image_url_original.")
 
                     product_group_tag = row.select_one("td:nth-child(5) span")
                     product_group = product_group_tag.text.strip() if product_group_tag else ""
@@ -337,7 +337,7 @@ class ScraperService:
 
                     if not application_number:
                         logging.warning(
-                            f"Row {row_idx + 1} on page {current_page}: Missing application_number. Skipping.")
+                            f"Row {row_idx + 1} on page {current_page}: Thiếu application_number. Đang bỏ qua.")
                         continue
 
                     stmt = select(Brand).where(Brand.application_number == application_number)
@@ -345,7 +345,7 @@ class ScraperService:
 
                     if existing_brand:
                         logging.info(
-                            f"Brand with application number {application_number} already exists. Stopping scrape for this date range.")
+                            f"Brand with application number {application_number} đã tồn tại. Dừng thu thập dữ liệu cho phạm vi ngày này.")
                         stop_scraping_due_to_duplicate = True
                         break
 
@@ -370,12 +370,12 @@ class ScraperService:
                     continue
 
             if stop_scraping_due_to_duplicate:
-                logging.info("Stopping scrape for current date range due to finding an existing duplicate.")
+                logging.info("Dừng thu thập dữ liệu cho phạm vi ngày hiện tại do tìm thấy dữ liệu trùng lặp.")
                 break
 
             if not page_had_new_data and rows:
                 logging.info(
-                    f"Page {current_page} had rows but no new data was added. Considering this the end for the date range.")
+                    f"Page {current_page} có hàng nhưng không có dữ liệu mới nào được thêm vào. Xem xét đây là kết thúc cho phạm vi ngày.")
                 break
 
             current_page += 1
@@ -383,17 +383,17 @@ class ScraperService:
 
         if brands_to_add:
             logging.info(
-                f"Attempting to bulk_create {len(brands_to_add)} new brand(s) for date range {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}.")
+                f"Đang cố gắng bulk_create {len(brands_to_add)} thương hiệu mới cho phạm vi ngày {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}.")
             try:
                 bulk_create(session, brands_to_add)
-                logging.info(f"Successfully added {len(brands_to_add)} new brand(s).")
+                logging.info(f"Đã thêm thành công{len(brands_to_add)} new brand(s).")
             except Exception as e_bulk:
-                logging.error(f"Error during bulk_create: {e_bulk}", exc_info=True)
+                logging.error(f"Lỗi trong quá trình bulk_create: {e_bulk}", exc_info=True)
                 # Cân nhắc rollback ở đây nếu bulk_create không tự xử lý
                 # session.rollback()
         elif not stop_scraping_due_to_duplicate:
             logging.info(
-                f"No new brands to add for date range {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}.")
+                f"Không có thương hiệu mới nào được thêm vào cho phạm vi ngày {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}.")
 
         return brands_to_add
 
