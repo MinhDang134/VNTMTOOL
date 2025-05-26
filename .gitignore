@@ -6,6 +6,7 @@
 # Thường được quản lý bởi các package manager như npm, pip, composer, Maven, Gradle,...
 /node_modules/
 /media_root/
+/scraper_state.json/
 /vendor/
 /bower_components/
 /.bundle/
@@ -47,6 +48,7 @@ pnpm-debug.log*
 # Bỏ qua các file môi trường (chứa thông tin nhạy cảm)
 # QUAN TRỌNG: Luôn luôn thêm file .env.example hoặc tương tự vào Git để người khác biết cần cấu hình gì.
 .env
+scraper_state.json
 .env.*
 !.env.example
 !.env.test
