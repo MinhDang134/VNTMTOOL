@@ -164,8 +164,6 @@ class ScraperService:
             logging.error(f"Lỗi chung khi tải hình ảnh {image_url_original}: {str(e)}", exc_info=True)
             return None
 
-    # --- BỎ ĐI MỘT TRONG HAI HÀM download_image BỊ TRÙNG LẶP ---
-    # Giữ lại phiên bản này:
 
 
     async def make_request(self, url: str, max_retries: Optional[int] = None) -> Optional[httpx.Response]:
