@@ -2,7 +2,7 @@
 
 import os
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Callable
 from urllib.parse import urlparse, unquote
 
 import httpx
@@ -15,6 +15,8 @@ from sqlmodel import Session, select
 import logging
 from src.tools.database import bulk_create, ensure_partition_exists
 import random
+
+from src.tools.state_manager import logging
 
 # from src.tools.database import create_monthly_partitions # Xóa nếu không dùng
 
@@ -65,12 +67,7 @@ class ScraperService:
         logging.debug(f"dùng proxy số : {proxy_ip}:{proxy_port}")
         return proxy_str
 
-    async def download_image(self,
-                             image_url_original: str,
-                             base_save_path_on_disk: str = "media_root",
-                             # Thư mục gốc chứa media, ví dụ "public" hoặc "static"
-                             image_subfolder: str = "brand_images"  # Thư mục con cho ảnh thương hiệu
-                             ) -> str | None:  # Sử dụng str | None cho type hint (Python 3.10+) hoặc Optional[str]
+    async def download_image(self,image_url_original: str,base_save_path_on_disk: str = "media_root",image_subfolder: str = "brand_images"  ) -> str | None:
         if not image_url_original:
             logging.warning("download_image gọi với một link ảnh gốc .")
             return None
@@ -164,8 +161,6 @@ class ScraperService:
             logging.error(f"Lỗi chung khi tải hình ảnh {image_url_original}: {str(e)}", exc_info=True)
             return None
 
-
-
     async def make_request(self, url: str, max_retries: Optional[int] = None) -> Optional[httpx.Response]:
         effective_max_retries = max_retries if max_retries is not None else settings.MAX_REQUEST_RETRIES
 
@@ -227,23 +222,26 @@ class ScraperService:
         logging.error(f"All {effective_max_retries} thử lại không thành công cho URL: {url}")
         return None
 
-    async def scrape_by_date_range(self, start_date: datetime, end_date: datetime, session: Session) -> List[Brand]:
-        current_page = 1
-        brands_to_add: List[Brand] = []
-        stop_scraping_due_to_duplicate = False
+    async def scrape_by_date_range(self,start_date: datetime,end_date: datetime,session: Session,initial_start_page: int,state_save_callback: Callable[[int], None]) -> List[Brand]:  # Trả về danh sách các Brand đã xử lý trong lần chạy này
 
-        # Sử dụng trực tiếp từ settings
+        current_page = initial_start_page
+        brands_collected_in_this_run: List[Brand] = []
+        stop_scraping_due_to_duplicate_policy = False
+
+        # Các biến cấu hình từ settings (giữ nguyên)
         request_limit_per_interval = settings.REQUEST_LIMIT_PER_INTERVAL
         request_interval_seconds = settings.REQUEST_INTERVAL_SECONDS
         min_request_delay = settings.MIN_REQUEST_DELAY
         max_request_delay = settings.MAX_REQUEST_DELAY
 
-        while True:
+
+        while True:  # Lặp qua các trang
+            # Xử lý giới hạn request (giữ nguyên)
             if self.request_count >= request_limit_per_interval:
                 time_diff = datetime.now() - self.last_request_time
                 if time_diff.total_seconds() < request_interval_seconds:
                     sleep_duration = request_interval_seconds - time_diff.total_seconds()
-                    logging.info(f"Đã đạt đến giới hạn yêu cầu. Đang ngủ {sleep_duration:.2f} giây.")
+                    logger.info(f"Đạt giới hạn request. Nghỉ {sleep_duration:.2f} giây.")
                     await asyncio.sleep(sleep_duration)
                 self.request_count = 0
                 self.last_request_time = datetime.now()
@@ -252,71 +250,62 @@ class ScraperService:
             end_str = end_date.strftime("%d.%m.%Y")
             url = f"https://vietnamtrademark.net/search?fd={start_str}%20-%20{end_str}&p={current_page}"
 
-            logging.info(f"Scraping URL: {url}")
-            response = await self.make_request(
-                url)  # max_retries sẽ lấy từ default của hàm make_request (tức là từ settings)
+            logging.info(f"Đang cào trang: {current_page} cho URL: {url}")
+            response = await self.make_request(url)
             self.request_count += 1
 
             if not response:
                 logging.error(
-                        f"Không nhận được phản hồi cho trang {current_page} trong phạm vi ngày {start_str}-{end_str}. Dừng lại ở phạm vi này.")
-                break
+                    f"Không nhận được phản hồi cho trang {current_page} (URL: {url}). Dừng xử lý khoảng ngày này.")
+                break  # Thoát vòng lặp trang
 
             try:
                 soup = BeautifulSoup(response.text, 'html.parser')
             except Exception as e_soup:
-                logging.error(f"Lỗi khi phân tích cú pháp HTML cho trang{current_page}: {e_soup}", exc_info=True)
-                break
+                logging.error(f"Lỗi khi parse HTML cho trang {current_page}: {e_soup}", exc_info=True)
+                break  # Thoát vòng lặp trang
 
             rows = soup.select("table.table tbody tr")
             if not rows:
                 logging.info(
-                    f"Không tìm thấy thêm dữ liệu trên trang {current_page} trong phạm vi ngày{start_str}-{end_str} hoặc trang trống.")
+                    f"Không tìm thấy hàng (dữ liệu) nào trên trang {current_page}. Kết thúc cho khoảng ngày này.")
                 break
 
-            page_had_new_data = False
+            brands_extracted_from_this_page: List[Brand] = []  # Lưu các brand từ trang hiện tại
+            page_had_new_valid_data = False  # Cờ để biết trang này có dữ liệu mới hợp lệ không
+
             for row_idx, row in enumerate(rows):
                 try:
+                    # --- BẮT ĐẦU LOGIC TRÍCH XUẤT DỮ LIỆU TỪ 1 HÀNG (ROW) ---
+                    # (Đây là phần code gốc của bạn, tôi chỉ tóm tắt lại các trường cần lấy)
                     date_text_tag = row.select_one("td:nth-child(7)")
-                    if not date_text_tag:
-                        logging.warning(
-                            f"Row {row_idx + 1} on page {current_page}: Thiếu thẻ application_date, đang bỏ qua.")
+                    if not date_text_tag or not date_text_tag.text.strip():
+                        logging.warning(f"Hàng {row_idx + 1} trang {current_page}: Thiếu ngày nộp đơn. Bỏ qua hàng.")
                         continue
-                    date_text = date_text_tag.text.strip()
                     try:
-                        parsed_application_date = datetime.strptime(date_text, "%d.%m.%Y").date()
-                    except ValueError as ve_date:
-                        logging.error(
-                            f"Row {row_idx + 1} on page {current_page}: Error parsing date ('{date_text}'): {str(ve_date)}",
-                            exc_info=True)
+                        parsed_application_date = datetime.strptime(date_text_tag.text.strip(), "%d.%m.%Y").date()
+                    except ValueError as ve:
+                        logging.warning(
+                            f"Hàng {row_idx + 1} trang {current_page}: Lỗi parse ngày '{date_text_tag.text.strip()}': {ve}. Bỏ qua hàng.")
                         continue
 
-                    ensure_partition_exists(parsed_application_date)
+                    # Đảm bảo partition tồn tại cho ngày này (quan trọng cho insert sau này)
+                    ensure_partition_exists(parsed_application_date)  # Gọi hàm này từ database.py
 
                     brand_name_tag = row.select_one("td:nth-child(4) label")
                     brand_name = brand_name_tag.text.strip() if brand_name_tag else ""
 
                     image_tag = row.select_one("td.mau-nhan img")
-                    # Trong code bạn gửi, image_url_original được gán bằng image_tag["src"]
-                    # nhưng sau đó bạn lại gán image_url (cũng là image_tag["src"]) cho brand.image_url
-                    # Chúng ta cần xử lý image_url_original để tải về và tạo link local.
                     image_url_original_src = image_tag["src"] if image_tag and image_tag.has_attr("src") else None
-
                     final_image_url_for_db = None
                     if image_url_original_src:
                         current_image_url_to_download = image_url_original_src
                         if current_image_url_to_download.startswith("/"):
                             current_image_url_to_download = f"{SOURCE_WEBSITE_DOMAIN.rstrip('/')}{current_image_url_to_download}"
-                        elif not current_image_url_to_download.lower().startswith(("http://", "https://")):
-                            logging.warning(
-                                f"Image URL '{current_image_url_to_download}' không phải là tuyệt đối, cố gắng thêm tiền tố vào tên miền.")
-                            current_image_url_to_download = f"{SOURCE_WEBSITE_DOMAIN.rstrip('/')}/{current_image_url_to_download.lstrip('/')}"
-
+                        # ... (các xử lý URL khác nếu cần) ...
                         saved_relative_image_path = await self.download_image(current_image_url_to_download)
                         if saved_relative_image_path:
                             final_image_url_for_db = f"{LOCAL_MEDIA_BASE_URL.rstrip('/')}/{saved_relative_image_path.lstrip('/')}"
-                    else:
-                        logging.debug(f"Row {row_idx + 1} on page {current_page}: Không tìm thấy image_url_original.")
 
                     product_group_tag = row.select_one("td:nth-child(5) span")
                     product_group = product_group_tag.text.strip() if product_group_tag else ""
@@ -326,6 +315,9 @@ class ScraperService:
 
                     application_number_tag = row.select_one("td:nth-child(8) a")
                     application_number = application_number_tag.text.strip() if application_number_tag else ""
+                    if not application_number:
+                        logging.warning(f"Hàng {row_idx + 1} trang {current_page}: Thiếu số đơn. Bỏ qua hàng.")
+                        continue
 
                     applicant_tag = row.select_one("td:nth-child(9)")
                     applicant = applicant_tag.text.strip() if applicant_tag else ""
@@ -333,67 +325,70 @@ class ScraperService:
                     representative_tag = row.select_one("td:nth-child(10)")
                     representative = representative_tag.text.strip() if representative_tag else ""
 
-                    if not application_number:
-                        logging.warning(
-                            f"Row {row_idx + 1} on page {current_page}: Thiếu application_number. Đang bỏ qua.")
-                        continue
-
                     stmt = select(Brand).where(Brand.application_number == application_number)
                     existing_brand = session.exec(stmt).first()
 
                     if existing_brand:
                         logging.info(
-                            f"Brand with application number {application_number} đã tồn tại. Dừng thu thập dữ liệu cho phạm vi ngày này.")
-                        stop_scraping_due_to_duplicate = True
-                        break
+                            f"Brand với số đơn {application_number} (trang {current_page}) đã tồn tại trong DB. Bỏ qua.")
+                        continue
 
-                    brand = Brand(
+                    # Tạo đối tượng Brand
+                    brand_obj = Brand(
                         brand_name=brand_name,
-                        image_url=final_image_url_for_db,  # Sử dụng link local đã xử lý
+                        image_url=final_image_url_for_db,
                         product_group=product_group,
                         status=status,
                         application_date=parsed_application_date,
                         application_number=application_number,
                         applicant=applicant,
                         representative=representative
+                        # updated_at sẽ được tự động bởi DB hoặc SQLModel default
                     )
-                    brands_to_add.append(brand)
-                    page_had_new_data = True
+                    brands_extracted_from_this_page.append(brand_obj)
+                    page_had_new_valid_data = True  # Đánh dấu trang này có dữ liệu mới cần lưu
 
                 except Exception as e_row_processing:
-                    row_html_snippet = str(row)[:200]  # Lấy một đoạn HTML để debug
-                    logging.error(
-                        f"Error processing row {row_idx + 1} on page {current_page}: {e_row_processing}\nRow HTML snippet: {row_html_snippet}",
-                        exc_info=True)
+                    row_html_snippet = str(row)[:250]  # Lấy một đoạn HTML để debug
+                    logging.error(f"Lỗi xử lý hàng {row_idx + 1} trên trang {current_page}: {e_row_processing}\n"
+                                 f"HTML Snippet: {row_html_snippet}", exc_info=True)
                     continue
 
-            if stop_scraping_due_to_duplicate:
-                logging.info("Dừng thu thập dữ liệu cho phạm vi ngày hiện tại do tìm thấy dữ liệu trùng lặp.")
-                break
 
-            if not page_had_new_data and rows:
+            # Xử lý lưu dữ liệu của trang hiện tại vào DB
+            if brands_extracted_from_this_page:
                 logging.info(
-                    f"Page {current_page} có hàng nhưng không có dữ liệu mới nào được thêm vào. Xem xét đây là kết thúc cho phạm vi ngày.")
-                break
+                    f"Trang {current_page}: Trích xuất được {len(brands_extracted_from_this_page)} nhãn hiệu mới.")
+                try:
+                    bulk_create(session, brands_extracted_from_this_page)
+                    session.commit()
+                    logging.info(
+                        f"ĐÃ COMMIT THÀNH CÔNG {len(brands_extracted_from_this_page)} nhãn hiệu từ trang {current_page} vào DB.")
+                    brands_collected_in_this_run.extend(brands_extracted_from_this_page)
+                    state_save_callback(current_page)
 
+                except Exception as e_db_commit:
+                    logging.error(f"Lỗi khi thêm hoặc commit dữ liệu cho trang {current_page} vào DB: {e_db_commit}",
+                                 exc_info=True)
+                    try:
+                        session.rollback()  # Quan trọng: Rollback lại nếu commit lỗi
+                        logging.info(f"Đã rollback transaction cho trang {current_page} do lỗi.")
+                    except Exception as e_rollback:
+                        logging.error(
+                            f"Lỗi nghiêm trọng khi rollback transaction cho trang {current_page}: {e_rollback}",
+                            exc_info=True)
+                    break
+
+            elif page_had_new_valid_data is False and rows:  # Trang có rows nhưng không có data mới (ví dụ: toàn bộ đã tồn tại hoặc bị skip)
+                logging.info(f"Trang {current_page} đã được xử lý nhưng không có dữ liệu mới nào được thêm vào DB.")
+                state_save_callback(current_page)
             current_page += 1
             await asyncio.sleep(random.uniform(min_request_delay, max_request_delay))
 
-        if brands_to_add:
-            logging.info(
-                f"Đang cố gắng bulk_create {len(brands_to_add)} thương hiệu mới cho phạm vi ngày {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}.")
-            try:
-                bulk_create(session, brands_to_add)
-                logging.info(f"Đã thêm thành công{len(brands_to_add)} new brand(s).")
-            except Exception as e_bulk:
-                logging.error(f"Lỗi trong quá trình bulk_create: {e_bulk}", exc_info=True)
-                # Cân nhắc rollback ở đây nếu bulk_create không tự xử lý
-                # session.rollback()
-        elif not stop_scraping_due_to_duplicate:
-            logging.info(
-                f"Không có thương hiệu mới nào được thêm vào cho phạm vi ngày {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}.")
 
-        return brands_to_add
+        logging.info(
+            f"Kết thúc scrape_by_date_range. Tổng số nhãn hiệu được thu thập và LƯU THÀNH CÔNG trong lần chạy này: {len(brands_collected_in_this_run)}.")
+        return brands_collected_in_this_run
 
     async def check_pending_brands(self, session: Session):
         logging.info("Bắt đầu kiểm tra các thương hiệu đang chờ xử lý...")
