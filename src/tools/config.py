@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic_settings import BaseSettings
 from typing import List, Optional
 import os
@@ -10,6 +12,14 @@ class Settings(BaseSettings):
     DB_USER: Optional[str] = os.getenv("DB_USER")
     DB_PASSWORD: Optional[str] = os.getenv("DB_PASSWORD")
     DB_NAME: Optional[str] = os.getenv("DB_NAME")
+    START_DAY :int= os.getenv("START_DAY")
+    START_MOTH: int = os.getenv("START_MOTH")
+    START_YEAR: int = os.getenv("START_YEAR")
+
+    END_DAY:int = os.getenv("END_DAY")
+    END_YEAR: int = os.getenv("END_YEAR")
+    END_MOTH: int = os.getenv("END_MOTH")
+
 
     PROXY_IPS: List[str] = [
         ip for ip in [os.getenv("IP_ONE"), os.getenv("IP_TWO"), os.getenv("IP_THREE")] if ip is not None
