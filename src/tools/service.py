@@ -325,6 +325,9 @@ class ScraperService:
                     representative_tag = row.select_one("td:nth-child(10)")
                     representative = representative_tag.text.strip() if representative_tag else ""
 
+                    product_detail_tag = row.select_one("td:nth-child(8) a")
+                    product_detail_href = product_detail_tag.get("href")
+
                     stmt = select(Brand).where(Brand.application_number == application_number)
                     existing_brand = session.exec(stmt).first()
 
@@ -342,7 +345,8 @@ class ScraperService:
                         application_date=parsed_application_date,
                         application_number=application_number,
                         applicant=applicant,
-                        representative=representative
+                        representative=representative,
+                        product_detail = f"https://vietnamtrademark.net{product_detail_href}"
                         # updated_at sẽ được tự động bởi DB hoặc SQLModel default
                     )
                     brands_extracted_from_this_page.append(brand_obj)

@@ -34,7 +34,7 @@ async def main_update_statuses():
 
     try:
         with get_session() as session:
-            await scraper.check_pending_brands(session)
+            await scraper.check_pecnding_brands(session)
     except Exception as e_main:
         logger.error(f"❌ Lỗi nghiêm trọng trong quy trình chính (main_update_statuses): {e_main}", exc_info=True)
 

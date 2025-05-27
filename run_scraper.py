@@ -21,8 +21,8 @@ STATE_FILE_PATH = os.path.join(PROJECT_ROOT, "scraper_state.json")
 
 async def run_scraper():
     scraper = ScraperService()
-    start_date = datetime(2025, 5, 1)
-    end_date = datetime(2025, 5, 30)
+    start_date = datetime(2025, 4, 1)
+    end_date = datetime(2025, 4, 5)
 
     date_range_key = f"brands_{start_date.strftime('%Y-%m-%d')}_{end_date.strftime('%Y-%m-%d')}"
 

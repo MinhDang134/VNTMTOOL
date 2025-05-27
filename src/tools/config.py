@@ -1,20 +1,9 @@
 # src/tools/config/settings.py
 
 from pydantic_settings import BaseSettings
-
 from typing import List, Optional
-
 import os
-
 from dotenv import load_dotenv
-
-
-
-
-
-
-
-
 load_dotenv()
 class Settings(BaseSettings):
 
