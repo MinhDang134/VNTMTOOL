@@ -1,9 +1,8 @@
 import asyncio
 from datetime import datetime
-import logging
 import os
 from src.tools.service import ScraperService
-from src.tools.database import get_session, ensure_partition_exists  # ensure_partition_exists có vẻ không cần ở đây nữa
+from src.tools.database import get_session
 from src.tools.state_manager import load_scrape_state, logging, save_scrape_state
 
 logging.basicConfig(
@@ -21,8 +20,8 @@ STATE_FILE_PATH = os.path.join(PROJECT_ROOT, "scraper_state.json")
 
 async def run_scraper():
     scraper = ScraperService()
-    start_date = datetime(2025, 4, 1)
-    end_date = datetime(2025, 4, 5)
+    start_date = datetime(2025, 1, 5)
+    end_date = datetime(2025, 1, 7)
 
     date_range_key = f"brands_{start_date.strftime('%Y-%m-%d')}_{end_date.strftime('%Y-%m-%d')}"
 
@@ -36,7 +35,7 @@ async def run_scraper():
                 def state_saver_callback(page_just_completed: int):
                     save_scrape_state(STATE_FILE_PATH, date_range_key, page_just_completed)
 
-                # Gọi service để cào dữ liệu
+
                 brands_processed = await scraper.scrape_by_date_range(
                     start_date=start_date,
                     end_date=end_date,

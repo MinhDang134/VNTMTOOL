@@ -1,9 +1,5 @@
 import sys
 import os
-
-# Đoạn code này sẽ xác định đường dẫn đến thư mục gốc của dự án (vntmtool)
-# và thêm nó vào sys.path để Python có thể tìm thấy module 'src'.
-
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR = os.path.dirname(SCRIPT_DIR)
 PROJECT_ROOT = os.path.dirname(SRC_DIR)
