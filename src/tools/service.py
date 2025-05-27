@@ -391,36 +391,27 @@ class ScraperService:
         return brands_collected_in_this_run
 
     async def check_pending_brands(self, session: Session):
-        # Sử dụng logger của class hoặc module, hoặc lấy logger mới
+
         logger = logging.getLogger(f"{self.__class__.__name__}.check_pending_brands")
 
-        logger.info("Bắt đầu kiểm tra các đơn có trạng thái 'đang giải quyết'...")
+        logger.info("Bắt đầu kiểm tra các đơn có trạng thái 'Đang giải quyết'...")
 
-        # 1. Truy vấn dữ liệu từ hệ thống nội bộ
-        # Điều kiện: status == "đang giải quyết" (theo yêu cầu)
-        statement = select(Brand).where(Brand.status == "đang giải quyết")
+
+        statement = select(Brand).where(Brand.status == "Đang giải quyết")
         pending_brands: List[Brand] = session.exec(statement).all()
 
         if not pending_brands:
-            logger.info("✅ Không tìm thấy đơn nào có trạng thái 'đang giải quyết' để kiểm tra.")
+            logger.info("✅ Không tìm thấy đơn nào có trạng thái 'Đang giải quyết' để kiểm tra.")
             return
 
-        logger.info(f"🔍 Tìm thấy {len(pending_brands)} đơn có trạng thái 'đang giải quyết' để kiểm tra.")
+        logger.info(f"🔍 Tìm thấy {len(pending_brands)} đơn có trạng thái 'Đang giải quyết' để kiểm tra.")
         updated_count = 0
         processed_count = 0
-
-        # Cân nhắc thêm delay giữa các request để tránh làm quá tải server VietnamTrademark
-        # min_delay_check = getattr(settings, 'MIN_DELAY_CHECK_PENDING', 1.0) # Lấy từ config hoặc mặc định
-        # max_delay_check = getattr(settings, 'MAX_DELAY_CHECK_PENDING', 3.0)
 
         for brand_idx, brand in enumerate(pending_brands):
             processed_count += 1
             logger.info(
                 f"Đang xử lý đơn {brand_idx + 1}/{len(pending_brands)}: ID {brand.id}, Số đơn {brand.application_number}")
-
-            # if brand_idx > 0: # Thêm delay nếu muốn
-            #     await asyncio.sleep(random.uniform(min_delay_check, max_delay_check))
-
             if not brand.application_number:
                 logger.warning(f"⚠️ Đơn có ID {brand.id} không có số đơn (application_number). Bỏ qua.")
                 continue
@@ -429,18 +420,15 @@ class ScraperService:
             url = f"https://vietnamtrademark.net/search?q={brand.application_number.strip()}"
             logger.info(f"🌍 Gọi đến VietnamTrademark: {url}")
 
-            response = await self.make_request(url)  # Sử dụng lại hàm make_request đã có
-
+            response = await self.make_request(url)
             if not response:
                 logger.warning(
                     f"❌ Không nhận được phản hồi từ VietnamTrademark cho số đơn {brand.application_number} (ID: {brand.id}). Bỏ qua đơn này.")
                 continue
 
             try:
-                # 3. Phân tích kết quả HTML
                 soup = BeautifulSoup(response.text, 'html.parser')
                 target_row = None
-                # Selector cho bảng và các hàng, dựa trên cấu trúc HTML của trang kết quả
                 rows_on_page = soup.select("table.table tbody tr")
                 if not rows_on_page:
                     logger.warning(
@@ -448,7 +436,6 @@ class ScraperService:
                     continue
 
                 for r_check in rows_on_page:
-                    # Selector cho cột chứa số đơn (ví dụ: cột thứ 8, thẻ a)
                     app_num_tag_check = r_check.select_one("td:nth-child(8) a")
                     if app_num_tag_check and app_num_tag_check.text.strip() == brand.application_number:
                         target_row = r_check
@@ -466,12 +453,11 @@ class ScraperService:
                     logger.info(
                         f"📊 Trạng thái mới từ web cho {brand.application_number}: '{new_status}' (Trạng thái hiện tại trong DB: '{brand.status}')")
 
-                    # 4. So sánh và xác định đơn cần cập nhật
                     if new_status != brand.status:
                         old_status = brand.status
                         brand.status = new_status
                         brand.updated_at = datetime.now(timezone.utc)  # Cập nhật thời gian
-                        session.add(brand)  # Đưa vào session để chuẩn bị commit
+                        session.add(brand)
                         updated_count += 1
                         logger.info(
                             f"🔄 CẬP NHẬT: Đơn {brand.application_number} (ID: {brand.id}) thay đổi trạng thái từ '{old_status}' -> '{new_status}'")
@@ -486,18 +472,17 @@ class ScraperService:
                 logger.error(
                     f"❌ Lỗi khi xử lý/bóc tách trạng thái cho đơn {brand.application_number} (ID: {brand.id}): {str(e_check)}",
                     exc_info=True)
-                continue  # Bỏ qua đơn này và tiếp tục với đơn khác
+                continue
 
-        # 5. Cập nhật vào database (sau khi đã duyệt qua tất cả các đơn)
         if updated_count > 0:
             try:
                 session.commit()
                 logger.info(f"💾 ĐÃ COMMIT THÀNH CÔNG: Cập nhật trạng thái cho {updated_count} đơn vào database.")
             except Exception as e_commit:
                 logger.error(f"❌ Lỗi khi commit các thay đổi trạng thái vào database: {e_commit}", exc_info=True)
-                session.rollback()  # Quan trọng: Rollback nếu có lỗi khi commit
+                session.rollback()
                 logger.info("Đã rollback transaction do lỗi commit.")
-        elif processed_count > 0:  # Đã xử lý một số đơn nhưng không có đơn nào thay đổi trạng thái
+        elif processed_count > 0:
             logger.info("✅ Không có trạng thái đơn nào cần cập nhật sau khi kiểm tra toàn bộ danh sách.")
 
         logger.info(f"Hoàn tất kiểm tra. Đã xử lý {processed_count} đơn, cập nhật {updated_count} đơn.")
