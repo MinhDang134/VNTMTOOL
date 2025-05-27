@@ -13,15 +13,15 @@ class Settings(BaseSettings):
     DB_PASSWORD: Optional[str] = os.getenv("DB_PASSWORD")
     DB_NAME: Optional[str] = os.getenv("DB_NAME")
     # Ngày bắt đầu tổng thể nếu không có trạng thái nào được lưu
-    INITIAL_SCRAPE_START_YEAR: int = int(os.getenv("INITIAL_SCRAPE_START_YEAR", "2022")) # nội dung từ gemini
-    INITIAL_SCRAPE_START_MOTH: int = int(os.getenv("INITIAL_SCRAPE_START_MOTH", "1")) # nội dung từ gemini
-    INITIAL_SCRAPE_START_DAY: int = int(os.getenv("INITIAL_SCRAPE_START_DAY", "1")) # nội dung từ gemini
+    INITIAL_SCRAPE_START_YEAR: int = int(os.getenv("INITIAL_SCRAPE_START_YEAR", "2022"))
+    INITIAL_SCRAPE_START_MOTH: int = int(os.getenv("INITIAL_SCRAPE_START_MOTH", "1"))
+    INITIAL_SCRAPE_START_DAY: int = int(os.getenv("INITIAL_SCRAPE_START_DAY", "1"))
 
     # Ngày kết thúc tổng thể (ví dụ, không cào quá ngày này)
     # Nếu không đặt, có thể mặc định là ngày hôm qua
-    OVERALL_SCRAPE_END_YEAR: Optional[int] = os.getenv("OVERALL_SCRAPE_END_YEAR") # nội dung từ gemini
-    OVERALL_SCRAPE_END_MOTH: Optional[int] = os.getenv("OVERALL_SCRAPE_END_MOTH") # nội dung từ gemini
-    OVERALL_SCRAPE_END_DAY: Optional[int] = os.getenv("OVERALL_SCRAPE_END_DAY") # nội dung từ gemini
+    OVERALL_SCRAPE_END_YEAR: Optional[int] = os.getenv("OVERALL_SCRAPE_END_YEAR")
+    OVERALL_SCRAPE_END_MOTH: Optional[int] = os.getenv("OVERALL_SCRAPE_END_MOTH")
+    OVERALL_SCRAPE_END_DAY: Optional[int] = os.getenv("OVERALL_SCRAPE_END_DAY")
 
     PROXY_IPS: List[str] = [
         ip for ip in [os.getenv("IP_ONE"), os.getenv("IP_TWO"), os.getenv("IP_THREE")] if ip is not None
@@ -46,8 +46,8 @@ class Settings(BaseSettings):
     MAX_DELAY_CHECK_PENDING: float = float(os.getenv("MAX_DELAY_CHECK_PENDING"))
 
     # Thời gian cho chu kỳ chạy/nghỉ
-    RUN_DURATION_MINUTES: int = int(os.getenv("RUN_DURATION_MINUTES", "10")) # nội dung từ gemini
-    PAUSE_DURATION_MINUTES: int = int(os.getenv("PAUSE_DURATION_MINUTES", "5")) # nội dung từ gemini
+    RUN_DURATION_MINUTES: int = int(os.getenv("RUN_DURATION_MINUTES", "10"))
+    PAUSE_DURATION_MINUTES: int = int(os.getenv("PAUSE_DURATION_MINUTES", "5"))
 
 
 
