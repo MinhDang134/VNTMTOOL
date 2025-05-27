@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime
 import os
+from src.tools.config import settings
 from src.tools.service import ScraperService
 from src.tools.database import get_session
 from src.tools.state_manager import load_scrape_state, logging, save_scrape_state
@@ -20,8 +21,10 @@ STATE_FILE_PATH = os.path.join(PROJECT_ROOT, "scraper_state.json")
 
 async def run_scraper():
     scraper = ScraperService()
-    start_date = datetime(2025, 1, 5)
-    end_date = datetime(2025, 1, 7)
+    start_date = datetime(settings.START_YEAR, settings.START_MOTH, settings.START_DAY)
+    end_date = datetime(settings.END_YEAR, settings.END_MOTH, settings.END_DAY)
+    #settings.START_YEAR, settings.START_MOTH, settings.START_DAY
+    #settings.END_YEAR, settings.END_MOTH, settings.END_DAY
 
     date_range_key = f"brands_{start_date.strftime('%Y-%m-%d')}_{end_date.strftime('%Y-%m-%d')}"
 
