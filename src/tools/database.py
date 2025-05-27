@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta
-
 from sqlmodel import SQLModel, Session, create_engine
 from contextlib import contextmanager
 from typing import Generator
@@ -7,16 +6,16 @@ from src.tools.config import settings
 import logging
 from sqlalchemy import text
 
-# Tạo engine kết nối đến PostgreSQL
+
 engine = create_engine(
     settings.DATABASE_URL,
-    echo=True,  # Log các câu query SQL
-    pool_pre_ping=True,  # Kiểm tra kết nối trước khi sử dụng
-    pool_size=5,         # Số lượng kết nối trong pool
-    max_overflow=10      # Số lượng kết nối tối đa có thể tạo thêm
+    echo=True,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10
 )
 
-# Context manager để quản lý session
+
 @contextmanager
 def get_session() -> Generator[Session, None, None]:
     session = Session(engine)
@@ -30,7 +29,7 @@ def get_session() -> Generator[Session, None, None]:
     finally:
         session.close()
 
-# Hàm helper để thêm nhiều bản ghi
+
 def bulk_create(session: Session, objects: list[SQLModel]) -> None:
     try:
         session.add_all(objects)
@@ -40,7 +39,7 @@ def bulk_create(session: Session, objects: list[SQLModel]) -> None:
         logging.error(f"Bulk create error: {str(e)}")
         raise
 
-# Hàm helper để cập nhật nhiều bản ghi
+
 def bulk_update(session: Session, objects: list[SQLModel]) -> None:
     try:
         for obj in objects:
@@ -51,7 +50,7 @@ def bulk_update(session: Session, objects: list[SQLModel]) -> None:
         logging.error(f"Bulk update error: {str(e)}")
         raise
 
-# Hàm helper để xóa nhiều bản ghi
+
 def bulk_delete(session: Session, objects: list[SQLModel]) -> None:
     try:
         for obj in objects:
@@ -66,7 +65,7 @@ def bulk_delete(session: Session, objects: list[SQLModel]) -> None:
 def get_partition_name(date: datetime) -> str:
     return f"brand_{date.strftime('%Y_%m')}"
 
-# Đảm bảo rằng partition tương ứng với ngày đã tồn tại, nếu chưa thì tạo
+
 def get_partition_name(date: datetime) -> str:
     return f"brand_{date.strftime('%Y_%m')}"
 
