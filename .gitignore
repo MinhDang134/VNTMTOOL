@@ -8,6 +8,7 @@
 /media_root/
 /scraper_state.json/
 /logs/
+/requirements/
 /vendor/
 /bower_components/
 /.bundle/
