@@ -51,6 +51,9 @@ pnpm-debug.log*
 # QUAN TRỌNG: Luôn luôn thêm file .env.example hoặc tương tự vào Git để người khác biết cần cấu hình gì.
 .env
 scraper_state.json
+scraper_activity.log
+scraper_control_state.json
+scraper_page_state.json
 .env.*
 !.env.example
 !.env.test

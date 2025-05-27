@@ -1,15 +1,15 @@
 import os
 import uuid
-from typing import List, Optional, Callable
 from urllib.parse import urlparse, unquote
 import httpx
+from typing import List, Optional, Callable, Dict, Any
+from datetime import datetime, timezone, date as date_type
 from bs4 import BeautifulSoup
 from datetime import datetime, timezone
 import asyncio
 from src.tools.models import Brand
 from src.tools.config import settings
 from sqlmodel import Session, select
-import logging
 from src.tools.database import bulk_create, ensure_partition_exists
 import random
 from src.tools.state_manager import logging
@@ -104,7 +104,7 @@ class ScraperService:
                     logging.warning(
                         f"Không thể xác định phần mở rộng chuẩn từ Content-Type '{content_type}' for {image_url_original}. "
                         f"Phần mở rộng gốc từ URL là '{ext_from_url}'. Mặc định là .jpg như một giải pháp dự phòng.")
-                    determined_ext = ".jpg"
+                    determined_ext = ".jpg"  # nội dung từ gemini (thêm fallback tường minh)
 
                 logging.debug(
                     f"DEBUG download_image: Phần mở rộng cuối cùng được chọn: '{determined_ext}' (repr: {repr(determined_ext)})")
@@ -149,7 +149,10 @@ class ScraperService:
                 min_delay_req = settings.MIN_REQUEST_DELAY
                 max_delay_req = settings.MAX_REQUEST_DELAY
                 if attempt > 0:
-                    await asyncio.sleep(random.uniform(min_delay_req, max_delay_req))
+                    retry_delay = random.uniform(min_delay_req + 1,
+                                                 max_delay_req + 2)  # nội dung từ gemini (thay đổi nhỏ về delay)
+                    logging.info(f"Thử lại {url} sau {retry_delay:.2f} giây...")  # nội dung từ gemini (thêm log)
+                    await asyncio.sleep(retry_delay)
 
                 async with httpx.AsyncClient(
                         timeout=httpx.Timeout(settings.REQUEST_TIMEOUT),
@@ -176,10 +179,11 @@ class ScraperService:
                         f"Lỗi HTTP nghiêm trọng {status_code} for {url}. Thay đổi proxy và thử lại nếu có thể.")
                     current_proxy = self.get_next_proxy()
                     proxies_config = {"http://": current_proxy, "https://": current_proxy} if current_proxy else None
-                    if attempt == effective_max_retries - 1: return None
+                    if attempt == effective_max_retries - 1: logging.error(f"Thử lại lần cuối thất bại với lỗi {status_code} cho {url}."); return None # nội dung từ gemini (log chi tiết)
                     await asyncio.sleep(random.uniform(5, 10))
                     continue
-                if attempt == effective_max_retries - 1: return None
+                if attempt == effective_max_retries - 1: logging.error(
+                    f"Thử lại lần cuối thất bại cho {url} với lỗi {status_code}."); return None  # nội dung từ gemini (log chi tiết)
                 await asyncio.sleep(random.uniform(2, 5))
 
             except httpx.RequestError as e_req:
@@ -187,80 +191,131 @@ class ScraperService:
                     f"Yêu cầu Lỗi (Cố gắng {attempt + 1}/{effective_max_retries}) for {url}: {str(e_req)}")
                 current_proxy = self.get_next_proxy()
                 proxies_config = {"http://": current_proxy, "https://": current_proxy} if current_proxy else None
-                if attempt == effective_max_retries - 1: return None
+                if attempt == effective_max_retries - 1: logging.error(
+                    f"Thử lại lần cuối thất bại cho {url} với lỗi request: {str(e_req)}."); return None  # nội dung từ gemini (log chi tiết)
                 await asyncio.sleep(random.uniform(3, 7))
 
             except Exception as e_generic:
                 logging.error(
                     f"Lỗi chung (Cố gắng {attempt + 1}/{effective_max_retries}) for {url}: {str(e_generic)}",
                     exc_info=True)
-                if attempt == effective_max_retries - 1: return None
+                if attempt == effective_max_retries - 1: logging.error(
+                    f"Thử lại lần cuối thất bại cho {url} với lỗi request: {str(e_req)}."); return None  # nội dung từ gemini (log chi tiết)
                 await asyncio.sleep(random.uniform(2, 5))
         logging.error(f"All {effective_max_retries} thử lại không thành công cho URL: {url}")
         return None
 
-    async def scrape_by_date_range(self,start_date: datetime,end_date: datetime,session: Session,initial_start_page: int,state_save_callback: Callable[[int], None]) -> List[Brand]:  # Trả về danh sách các Brand đã xử lý trong lần chạy này
+    # Nằm trong class ScraperService của file src/tools/service.py
 
+    async def scrape_by_date_range(self,  # nội dung từ gemini (thay đổi signature và kiểu trả về)
+                                   start_date: date_type,  # nội dung từ gemini
+                                   end_date: date_type,  # nội dung từ gemini
+                                   session: Session,
+                                   initial_start_page: int,
+                                   state_save_callback: Callable[[int], None]
+                                   ) -> Dict[str, Any]:  # nội dung từ gemini
         current_page = initial_start_page
         brands_collected_in_this_run: List[Brand] = []
-        stop_scraping_due_to_duplicate_policy = False
+        # stop_scraping_due_to_duplicate_policy = False # nội dung từ gemini (Biến này không được sử dụng, đã loại bỏ)
         request_limit_per_interval = settings.REQUEST_LIMIT_PER_INTERVAL
         request_interval_seconds = settings.REQUEST_INTERVAL_SECONDS
         min_request_delay = settings.MIN_REQUEST_DELAY
         max_request_delay = settings.MAX_REQUEST_DELAY
 
+        scrape_status_result = {  # nội dung từ gemini
+            "status": "unknown_error",  # nội dung từ gemini
+            "brands_processed_count": 0,  # nội dung từ gemini
+            "message": "Scraping did not complete as expected."  # nội dung từ gemini
+        }  # nội dung từ gemini
 
         while True:
             if self.request_count >= request_limit_per_interval:
                 time_diff = datetime.now() - self.last_request_time
                 if time_diff.total_seconds() < request_interval_seconds:
                     sleep_duration = request_interval_seconds - time_diff.total_seconds()
-                    logging.info(f"Đạt giới hạn request. Nghỉ {sleep_duration:.2f} giây.")
+                    logging.info(
+                        f"Đạt giới hạn request nội bộ. Nghỉ {sleep_duration:.2f} giây.")  # Log này từ code gốc, không phải Gemini thêm mới hoàn toàn
                     await asyncio.sleep(sleep_duration)
                 self.request_count = 0
                 self.last_request_time = datetime.now()
 
             start_str = start_date.strftime("%d.%m.%Y")
-            end_str = end_date.strftime("%d.%m.%Y")
+            end_str = end_date.strftime("%d.%m.%Y")  # Khi cào theo ngày, end_str sẽ giống start_str
             url = f"https://vietnamtrademark.net/search?fd={start_str}%20-%20{end_str}&p={current_page}"
 
-            logging.info(f"Đang cào trang: {current_page} cho URL: {url}")
+            logging.info(
+                f"Đang cào trang: {current_page} cho ngày {start_str} (URL: {url})")  # nội dung từ gemini (log rõ ngày)
             response = await self.make_request(url)
             self.request_count += 1
 
             if not response:
                 logging.error(
-                    f"Không nhận được phản hồi cho trang {current_page} (URL: {url}). Dừng xử lý khoảng ngày này.")
+                    f"Không nhận được phản hồi cho trang {current_page} (URL: {url}). Dừng xử lý ngày này.")  # nội dung từ gemini (log rõ ngày)
+                scrape_status_result = {  # nội dung từ gemini
+                    "status": "request_error",  # nội dung từ gemini
+                    "brands_processed_count": len(brands_collected_in_this_run),  # nội dung từ gemini
+                    "message": f"Failed to get response for page {current_page} of day {start_str}."
+                    # nội dung từ gemini
+                }  # nội dung từ gemini
                 break
 
             try:
                 soup = BeautifulSoup(response.text, 'html.parser')
             except Exception as e_soup:
-                logging.error(f"Lỗi khi parse HTML cho trang {current_page}: {e_soup}", exc_info=True)
+                logging.error(f"Lỗi khi parse HTML cho trang {current_page} ngày {start_str}: {e_soup}",
+                              exc_info=True)  # nội dung từ gemini (log rõ ngày)
+                scrape_status_result = {  # nội dung từ gemini
+                    "status": "soup_error",  # nội dung từ gemini
+                    "brands_processed_count": len(brands_collected_in_this_run),  # nội dung từ gemini
+                    "message": f"HTML parsing error for page {current_page} of day {start_str}."  # nội dung từ gemini
+                }  # nội dung từ gemini
                 break
 
             rows = soup.select("table.table tbody tr")
-            if not rows:
-                logging.info(
-                    f"Không tìm thấy hàng (dữ liệu) nào trên trang {current_page}. Kết thúc cho khoảng ngày này.")
-                break
+            if not rows:  # nội dung từ gemini (logic xử lý khi không có rows được làm rõ hơn)
+                if current_page == 1:  # nội dung từ gemini (Nếu là trang đầu tiên của ngày và không có dữ liệu)
+                    logging.info(
+                        f"Không tìm thấy dữ liệu nào trên trang {current_page} cho ngày {start_str}. Có thể ngày này không có nhãn hiệu.")  # nội dung từ gemini
+                    scrape_status_result = {  # nội dung từ gemini
+                        "status": "no_data_on_first_page",  # nội dung từ gemini (Trạng thái mới)
+                        "brands_processed_count": len(brands_collected_in_this_run),  # nội dung từ gemini
+                        "message": f"No data found on the first page for day {start_str}."  # nội dung từ gemini
+                    }  # nội dung từ gemini
+                else:  # nội dung từ gemini (Nếu không phải trang đầu, nghĩa là đã hết dữ liệu cho ngày này)
+                    logging.info(
+                        f"Không tìm thấy hàng (dữ liệu) nào trên trang {current_page} cho ngày {start_str}. Kết thúc cho ngày này.")  # nội dung từ gemini
+                    scrape_status_result = {  # nội dung từ gemini
+                        "status": "completed_all_pages",  # nội dung từ gemini
+                        "brands_processed_count": len(brands_collected_in_this_run),  # nội dung từ gemini
+                        "message": f"Successfully scraped all pages for day {start_str}."  # nội dung từ gemini
+                    }  # nội dung từ gemini
+                break  # Thoát vòng lặp trang
 
             brands_extracted_from_this_page: List[Brand] = []
-            page_had_new_valid_data = False
+            page_had_new_valid_data = False  # Theo dõi xem có dữ liệu mới thực sự được thêm không
             for row_idx, row in enumerate(rows):
                 try:
                     date_text_tag = row.select_one("td:nth-child(7)")
                     if not date_text_tag or not date_text_tag.text.strip():
-                        logging.warning(f"Hàng {row_idx + 1} trang {current_page}: Thiếu ngày nộp đơn. Bỏ qua hàng.")
+                        logging.warning(
+                            f"Hàng {row_idx + 1} trang {current_page} ngày {start_str}: Thiếu ngày nộp đơn. Bỏ qua hàng.")  # nội dung từ gemini (log rõ ngày)
                         continue
                     try:
                         parsed_application_date = datetime.strptime(date_text_tag.text.strip(), "%d.%m.%Y").date()
                     except ValueError as ve:
                         logging.warning(
-                            f"Hàng {row_idx + 1} trang {current_page}: Lỗi parse ngày '{date_text_tag.text.strip()}': {ve}. Bỏ qua hàng.")
+                            f"Hàng {row_idx + 1} trang {current_page} ngày {start_str}: Lỗi parse ngày '{date_text_tag.text.strip()}': {ve}. Bỏ qua hàng.")  # nội dung từ gemini (log rõ ngày)
                         continue
 
-                    ensure_partition_exists(parsed_application_date)
+                    # Đảm bảo application_date nằm trong khoảng ngày đang scrape (thường là cùng ngày)
+                    if not (
+                            start_date <= parsed_application_date <= end_date):  # nội dung từ gemini (kiểm tra ngày hợp lệ)
+                        logging.warning(
+                            f"Hàng {row_idx + 1} trang {current_page}: Ngày nộp đơn {parsed_application_date.strftime('%Y-%m-%d')} "  # nội dung từ gemini
+                            f"nằm ngoài khoảng đang scrape ({start_date.strftime('%Y-%m-%d')} - {end_date.strftime('%Y-%m-%d')}). Bỏ qua.")  # nội dung từ gemini
+                        continue  # nội dung từ gemini
+
+                    ensure_partition_exists(parsed_application_date)  # Hàm này từ database.py
 
                     brand_name_tag = row.select_one("td:nth-child(4) label")
                     brand_name = brand_name_tag.text.strip() if brand_name_tag else ""
@@ -277,7 +332,7 @@ class ScraperService:
                             final_image_url_for_db = f"{LOCAL_MEDIA_BASE_URL.rstrip('/')}/{saved_relative_image_path.lstrip('/')}"
 
                     product_group_tags = row.select("td:nth-child(5) span")
-                    if product_group_tags:
+                    if product_group_tags:  # Đảm bảo logic này đầy đủ
                         product_group_values = [tag.text.strip() for tag in product_group_tags if tag.text.strip()]
                         product_group = ", ".join(product_group_values)
                     else:
@@ -289,7 +344,8 @@ class ScraperService:
                     application_number_tag = row.select_one("td:nth-child(8) a")
                     application_number = application_number_tag.text.strip() if application_number_tag else ""
                     if not application_number:
-                        logging.warning(f"Hàng {row_idx + 1} trang {current_page}: Thiếu số đơn. Bỏ qua hàng.")
+                        logging.warning(
+                            f"Hàng {row_idx + 1} trang {current_page} ngày {start_str}: Thiếu số đơn. Bỏ qua hàng.")  # nội dung từ gemini (log rõ ngày)
                         continue
 
                     applicant_tag = row.select_one("td:nth-child(9)")
@@ -299,15 +355,16 @@ class ScraperService:
                     representative = representative_tag.text.strip() if representative_tag else ""
 
                     product_detail_tag = row.select_one("td:nth-child(8) a")
-                    product_detail_href = product_detail_tag.get("href")
+                    product_detail_href = product_detail_tag.get(
+                        "href") if product_detail_tag else ""  # Lấy href an toàn
 
                     stmt = select(Brand).where(Brand.application_number == application_number)
                     existing_brand = session.exec(stmt).first()
 
                     if existing_brand:
                         logging.info(
-                            f"Brand với số đơn {application_number} (trang {current_page}) đã tồn tại trong DB. Bỏ qua.")
-                        continue
+                            f"Brand với số đơn {application_number} (trang {current_page}, ngày {start_str}) đã tồn tại. Bỏ qua.")  # nội dung từ gemini (log rõ ngày)
+                        continue  # Bỏ qua brand đã tồn tại
 
                     brand_obj = Brand(
                         brand_name=brand_name,
@@ -318,59 +375,92 @@ class ScraperService:
                         application_number=application_number,
                         applicant=applicant,
                         representative=representative,
-                        product_detail = f"https://vietnamtrademark.net{product_detail_href}"
+                        product_detail=f"https://vietnamtrademark.net{product_detail_href}" if product_detail_href else ""
+                        # Xây dựng URL đầy đủ
                     )
                     brands_extracted_from_this_page.append(brand_obj)
                     page_had_new_valid_data = True
 
                 except Exception as e_row_processing:
-                    row_html_snippet = str(row)[:250]
-                    logging.error(f"Lỗi xử lý hàng {row_idx + 1} trên trang {current_page}: {e_row_processing}\n"
-                                 f"HTML Snippet: {row_html_snippet}", exc_info=True)
+                    row_html_snippet = str(row)[:250]  # Giữ lại để debug
+                    logging.error(
+                        f"Lỗi xử lý hàng {row_idx + 1} trên trang {current_page} ngày {start_str}: {e_row_processing}\nHTML Snippet: {row_html_snippet}",
+                        exc_info=True)  # nội dung từ gemini (log rõ ngày)
+                    # Không break ở đây, cố gắng xử lý các hàng khác trên trang
                     continue
-
 
             # Xử lý lưu dữ liệu của trang hiện tại vào DB
             if brands_extracted_from_this_page:
                 logging.info(
-                    f"Trang {current_page}: Trích xuất được {len(brands_extracted_from_this_page)} nhãn hiệu mới.")
+                    f"Trang {current_page} ngày {start_str}: Trích xuất được {len(brands_extracted_from_this_page)} nhãn hiệu mới.")  # nội dung từ gemini (log rõ ngày)
                 try:
-                    bulk_create(session, brands_extracted_from_this_page)
-                    session.commit()
-                    logging.info(
-                        f"ĐÃ COMMIT THÀNH CÔNG {len(brands_extracted_from_this_page)} nhãn hiệu từ trang {current_page} vào DB.")
+                    bulk_create(session, brands_extracted_from_this_page)  # bulk_create đã tự commit/rollback
+                    # logging.info( # Log này được di chuyển vào bulk_create hoặc bỏ đi nếu bulk_create đã log
+                    #     f"ĐÃ COMMIT THÀNH CÔNG {len(brands_extracted_from_this_page)} nhãn hiệu từ trang {current_page} ngày {start_str} vào DB.")
+                    # session.commit() # nội dung từ gemini (ĐÃ LOẠI BỎ - bulk_create tự xử lý)
+                    # logging.info( # nội dung từ gemini (ĐÃ LOẠI BỎ - log trùng lặp)
+                    #     f"ĐÃ COMMIT THÀNH CÔNG {len(brands_extracted_from_this_page)} nhãn hiệu từ trang {current_page} vào DB.")
                     brands_collected_in_this_run.extend(brands_extracted_from_this_page)
-                    state_save_callback(current_page)
+                    state_save_callback(current_page)  # Lưu trang vừa hoàn thành
 
-                except Exception as e_db_commit:
-                    logging.error(f"Lỗi khi thêm hoặc commit dữ liệu cho trang {current_page} vào DB: {e_db_commit}",
-                                 exc_info=True)
-                    try:
-                        session.rollback()  # Quan trọng: Rollback lại nếu commit lỗi
-                        logging.info(f"Đã rollback transaction cho trang {current_page} do lỗi.")
-                    except Exception as e_rollback:
-                        logging.error(
-                            f"Lỗi nghiêm trọng khi rollback transaction cho trang {current_page}: {e_rollback}",
-                            exc_info=True)
-                    break
+                except Exception as e_db_commit:  # Lỗi này thường do bulk_create raise lại sau khi rollback
+                    logging.error(
+                        f"Lỗi khi thêm dữ liệu cho trang {current_page} ngày {start_str} vào DB (có thể do bulk_create): {e_db_commit}",
+                        exc_info=True)  # nội dung từ gemini (log rõ ngày và nguồn lỗi)
+                    scrape_status_result = {  # nội dung từ gemini
+                        "status": "db_commit_error",  # nội dung từ gemini
+                        "brands_processed_count": len(brands_collected_in_this_run),
+                        # nội dung từ gemini (có thể một số đã được thêm từ các trang trước đó của ngày này nếu có lỗi giữa chừng)
+                        "message": f"DB commit error on page {current_page} for day {start_str}."  # nội dung từ gemini
+                    }  # nội dung từ gemini
+                    break  # Thoát vòng lặp trang nếu lỗi DB nghiêm trọng
 
-            elif page_had_new_valid_data is False and rows:  # Trang có rows nhưng không có data mới (ví dụ: toàn bộ đã tồn tại hoặc bị skip)
-                logging.info(f"Trang {current_page} đã được xử lý nhưng không có dữ liệu mới nào được thêm vào DB.")
-                state_save_callback(current_page)
+            elif page_had_new_valid_data is False and rows:  # Trang có rows nhưng không có data mới (ví dụ: toàn bộ đã tồn tại hoặc bị skip do lỗi parse từng hàng)
+                logging.info(
+                    f"Trang {current_page} ngày {start_str} đã xử lý nhưng không có dữ liệu mới nào được thêm vào DB.")  # nội dung từ gemini (log rõ ngày)
+                state_save_callback(current_page)  # Vẫn lưu trạng thái trang đã xử lý
+
+            # Cập nhật trạng thái thành công tạm thời cho trang này nếu không có lỗi nào break vòng lặp
+            # Điều này quan trọng nếu vòng lặp `while True` kết thúc do `if not rows:`
+            # (tức là hoàn thành tất cả các trang cho ngày đó)
+            if scrape_status_result["status"] not in ["request_error", "soup_error",
+                                                      "db_commit_error"]:  # nội dung từ gemini (chỉ cập nhật nếu chưa có lỗi nghiêm trọng)
+                if brands_extracted_from_this_page or (page_had_new_valid_data is False and rows):  # nội dung từ gemini
+                    scrape_status_result = {  # nội dung từ gemini
+                        "status": "processing_pages",
+                        # nội dung từ gemini (Trạng thái tạm thời, sẽ được cập nhật cuối cùng)
+                        "brands_processed_count": len(brands_collected_in_this_run),  # nội dung từ gemini
+                        "message": f"Successfully processed page {current_page} for day {start_str}."
+                        # nội dung từ gemini
+                    }  # nội dung từ gemini
+
             current_page += 1
-            await asyncio.sleep(random.uniform(min_request_delay, max_request_delay))
+            await asyncio.sleep(random.uniform(min_request_delay, max_request_delay))  # Delay giữa các trang
 
+        # Cập nhật lại tổng số brands_processed_count lần cuối trước khi return
+        # và đảm bảo message phản ánh đúng trạng thái cuối cùng
+        scrape_status_result["brands_processed_count"] = len(brands_collected_in_this_run)  # nội dung từ gemini
+        final_message = scrape_status_result.get("message",
+                                                 "Trạng thái không xác định khi kết thúc.")  # nội dung từ gemini
+        if scrape_status_result["status"] == "completed_all_pages" and len(
+                brands_collected_in_this_run) == 0 and initial_start_page == 1:  # nội dung từ gemini
+            # Trường hợp này có thể là "no_data_on_first_page" nhưng "if not rows" đã set là "completed_all_pages"
+            # Cần làm rõ hơn nếu không có brand nào được thu thập VÀ là trang đầu tiên thử nghiệm cho ngày đó
+            # Tuy nhiên, logic hiện tại "no_data_on_first_page" đã xử lý trường hợp này ở trên.
+            pass  # nội dung từ gemini
 
-        logging.info(
-            f"Kết thúc scrape_by_date_range. Tổng số nhãn hiệu được thu thập và LƯU THÀNH CÔNG trong lần chạy này: {len(brands_collected_in_this_run)}.")
-        return brands_collected_in_this_run
+        logging.info(  # nội dung từ gemini
+            f"Kết thúc scrape cho ngày {start_date.strftime('%Y-%m-%d')}. "  # nội dung từ gemini
+            f"Trạng thái: {scrape_status_result['status']}. "  # nội dung từ gemini
+            f"Tổng số nhãn hiệu được xử lý trong lần gọi này: {scrape_status_result['brands_processed_count']}.")  # nội dung từ gemini
+        return scrape_status_result  # nội dung từ gemini
+
+    # Nằm trong class ScraperService của file src/tools/service.py
 
     async def check_pending_brands(self, session: Session):
-
+        # Tạo một logger riêng cho phương thức này để dễ theo dõi
         logger = logging.getLogger(f"{self.__class__.__name__}.check_pending_brands")
-
         logger.info("Bắt đầu kiểm tra các đơn có trạng thái 'Đang giải quyết'...")
-
 
         statement = select(Brand).where(Brand.status == "Đang giải quyết")
         pending_brands: List[Brand] = session.exec(statement).all()
@@ -383,31 +473,45 @@ class ScraperService:
         updated_count = 0
         processed_count = 0
 
+        # Lấy giá trị delay từ settings (thêm lại từ phiên bản trước đó của Gemini)
+        min_delay_check = settings.MIN_DELAY_CHECK_PENDING  # nội dung từ gemini (thêm lại)
+        max_delay_check = settings.MAX_DELAY_CHECK_PENDING  # nội dung từ gemini (thêm lại)
+
         for brand_idx, brand in enumerate(pending_brands):
             processed_count += 1
             logger.info(
                 f"Đang xử lý đơn {brand_idx + 1}/{len(pending_brands)}: ID {brand.id}, Số đơn {brand.application_number}")
+
             if not brand.application_number:
                 logger.warning(f"⚠️ Đơn có ID {brand.id} không có số đơn (application_number). Bỏ qua.")
+                # Delay nhỏ trước khi chuyển sang đơn tiếp theo
+                await asyncio.sleep(
+                    random.uniform(min_delay_check / 2, max_delay_check / 2))  # nội dung từ gemini (thêm lại delay)
                 continue
 
-            # 2. Gọi API hoặc gửi HTTP request đến VietnamTrademark
             url = f"https://vietnamtrademark.net/search?q={brand.application_number.strip()}"
             logger.info(f"🌍 Gọi đến VietnamTrademark: {url}")
 
-            response = await self.make_request(url)
+            response = await self.make_request(url)  # make_request đã có retry và delay riêng
             if not response:
                 logger.warning(
                     f"❌ Không nhận được phản hồi từ VietnamTrademark cho số đơn {brand.application_number} (ID: {brand.id}). Bỏ qua đơn này.")
+                # Delay trước khi chuyển sang đơn tiếp theo sau lỗi request
+                await asyncio.sleep(
+                    random.uniform(min_delay_check, max_delay_check))  # nội dung từ gemini (thêm lại delay)
                 continue
 
             try:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 target_row = None
                 rows_on_page = soup.select("table.table tbody tr")
+
                 if not rows_on_page:
                     logger.warning(
                         f"📄 Không tìm thấy bảng/hàng dữ liệu nào trên trang kết quả cho số đơn {brand.application_number}.")
+                    # Delay nếu không tìm thấy dữ liệu
+                    await asyncio.sleep(
+                        random.uniform(min_delay_check / 2, max_delay_check / 2))  # nội dung từ gemini (thêm lại delay)
                     continue
 
                 for r_check in rows_on_page:
@@ -419,6 +523,9 @@ class ScraperService:
                 if not target_row:
                     logger.warning(
                         f"📄 Không tìm thấy hàng khớp với số đơn {brand.application_number} trên trang kết quả tìm kiếm.")
+                    # Delay nếu không tìm thấy hàng khớp
+                    await asyncio.sleep(
+                        random.uniform(min_delay_check / 2, max_delay_check / 2))  # nội dung từ gemini (thêm lại delay)
                     continue
 
                 status_tag = target_row.select_one("td.trang-thai span.badge")
@@ -430,8 +537,9 @@ class ScraperService:
                     if new_status != brand.status:
                         old_status = brand.status
                         brand.status = new_status
+                        # Cập nhật thời gian, quan trọng để theo dõi khi nào bản ghi được sửa đổi
                         brand.updated_at = datetime.now(timezone.utc)
-                        session.add(brand)
+                        session.add(brand)  # Đánh dấu đối tượng brand để SQLAlchemy/SQLModel biết cần cập nhật
                         updated_count += 1
                         logger.info(
                             f"🔄 CẬP NHẬT: Đơn {brand.application_number} (ID: {brand.id}) thay đổi trạng thái từ '{old_status}' -> '{new_status}'")
@@ -446,17 +554,27 @@ class ScraperService:
                 logger.error(
                     f"❌ Lỗi khi xử lý/bóc tách trạng thái cho đơn {brand.application_number} (ID: {brand.id}): {str(e_check)}",
                     exc_info=True)
+                # Dù có lỗi, vẫn tiếp tục với đơn tiếp theo sau một khoảng delay
+                await asyncio.sleep(
+                    random.uniform(min_delay_check, max_delay_check))  # nội dung từ gemini (thêm lại delay)
                 continue
 
+            # Delay giữa việc kiểm tra các đơn đang chờ xử lý, để tránh làm quá tải server
+            # Ngay cả khi xử lý thành công, cũng nên có một khoảng nghỉ nhỏ.
+            if brand_idx < len(pending_brands) - 1:  # Không delay sau đơn cuối cùng
+                await asyncio.sleep(
+                    random.uniform(min_delay_check, max_delay_check))  # nội dung từ gemini (thêm lại delay)
+
+        # Commit tất cả các thay đổi một lần sau khi duyệt qua hết các pending_brands
         if updated_count > 0:
             try:
                 session.commit()
                 logger.info(f"💾 ĐÃ COMMIT THÀNH CÔNG: Cập nhật trạng thái cho {updated_count} đơn vào database.")
             except Exception as e_commit:
                 logger.error(f"❌ Lỗi khi commit các thay đổi trạng thái vào database: {e_commit}", exc_info=True)
-                session.rollback()
+                session.rollback()  # Quan trọng: rollback nếu commit thất bại
                 logger.info("Đã rollback transaction do lỗi commit.")
-        elif processed_count > 0:
+        elif processed_count > 0:  # Chỉ log nếu có đơn được xử lý
             logger.info("✅ Không có trạng thái đơn nào cần cập nhật sau khi kiểm tra toàn bộ danh sách.")
 
         logger.info(f"Hoàn tất kiểm tra. Đã xử lý {processed_count} đơn, cập nhật {updated_count} đơn.")
