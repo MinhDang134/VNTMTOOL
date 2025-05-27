@@ -6,7 +6,6 @@ import logging
 
 
 def load_scrape_state(state_file_path: str, date_range_key: str) -> int:
-
     try:
         if not os.path.exists(state_file_path):
             logging.info(
