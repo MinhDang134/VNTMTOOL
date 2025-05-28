@@ -2,23 +2,26 @@ import os
 import uuid
 from urllib.parse import urlparse, unquote
 import httpx
-from typing import List, Optional, Callable, Dict, Any
+from typing import List, Optional, Callable, Dict, Any  # CRISTIANO
 from datetime import datetime, timezone, date as date_type
 from bs4 import BeautifulSoup
-from datetime import datetime, timezone
+# from datetime import datetime, timezone # CRISTIANO (Đã có ở trên)
 import asyncio
 from src.tools.models import Brand
 from src.tools.config import settings
-from sqlmodel import Session, select
-from src.tools.database import bulk_create, ensure_partition_exists
+from sqlmodel import Session, select  # CRISTIANO (Đảm bảo Session và select từ sqlmodel)
+from src.tools.database import bulk_create  # CRISTIANO (ensure_partition_exists sẽ không được gọi từ đây nữa)
 import random
-from src.tools.state_manager import logging
+import logging  # CRISTIANO (Sử dụng logging chuẩn)
 
-LOCAL_MEDIA_BASE_URL = settings.LOCAL_MEDIA_BASE_URL
-SOURCE_WEBSITE_DOMAIN = settings.SOURCE_WEBSITE_DOMAIN
+
+# CRISTIANO (Các hằng số này không cần thiết nếu settings được dùng trực tiếp hoặc truyền qua init)
+# LOCAL_MEDIA_BASE_URL = settings.LOCAL_MEDIA_BASE_URL
+# SOURCE_WEBSITE_DOMAIN = settings.SOURCE_WEBSITE_DOMAIN
 
 class ScraperService:
-    def __init__(self):
+    def __init__(self, media_dir: str):  # CRISTIANO
+        self.media_dir = media_dir  # CRISTIANO
         self.proxy_index = 0
         self.request_count = 0
         self.last_request_time = datetime.now()
@@ -30,7 +33,7 @@ class ScraperService:
             "DNT": "1",
             "Upgrade-Insecure-Requests": "1"
         }
-        self.project_root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        # self.project_root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")) # CRISTIANO (Không cần nếu media_dir đã đầy đủ)
 
     def get_next_proxy(self) -> Optional[str]:
         if not settings.PROXY_IPS or not settings.PROXY_PORTS:
@@ -55,16 +58,19 @@ class ScraperService:
         logging.debug(f"dùng proxy số : {proxy_ip}:{proxy_port}")
         return proxy_str
 
-    async def download_image(self,image_url_original: str,base_save_path_on_disk: str = "media_root",image_subfolder: str = "brand_images"  ) -> str | None:
+    async def download_image(self,
+                             image_url_original: str) -> str | None:  # CRISTIANO (Bỏ các tham số đường dẫn mặc định)
         if not image_url_original:
-            logging.warning("download_image gọi với một link ảnh gốc .")
+            logging.warning("download_image gọi với một link ảnh gốc rỗng.")  # CRISTIANO (Sửa lỗi chính tả)
             return None
 
-        full_save_folder_on_disk = os.path.join(self.project_root_dir, base_save_path_on_disk, image_subfolder)
+        # full_save_folder_on_disk = os.path.join(self.project_root_dir, base_save_path_on_disk, image_subfolder) # CRISTIANO (Sử dụng self.media_dir)
+        full_save_folder_on_disk = self.media_dir  # CRISTIANO
+
         try:
             os.makedirs(full_save_folder_on_disk, exist_ok=True)
         except OSError as e:
-            logging.error(f"không thể tạo một direction  {full_save_folder_on_disk}: {e}")
+            logging.error(f"không thể tạo một thư mục  {full_save_folder_on_disk}: {e}")  # CRISTIANO (Sửa lỗi chính tả)
             return None
 
         try:
@@ -104,11 +110,10 @@ class ScraperService:
                     logging.warning(
                         f"Không thể xác định phần mở rộng chuẩn từ Content-Type '{content_type}' for {image_url_original}. "
                         f"Phần mở rộng gốc từ URL là '{ext_from_url}'. Mặc định là .jpg như một giải pháp dự phòng.")
-                    determined_ext = ".jpg"  #     (thêm fallback tường minh)
+                    determined_ext = ".jpg"
 
                 logging.debug(
                     f"DEBUG download_image: Phần mở rộng cuối cùng được chọn: '{determined_ext}' (repr: {repr(determined_ext)})")
-
 
                 unique_filename_base = str(uuid.uuid4())
                 unique_filename = f"{unique_filename_base}{determined_ext}"
@@ -118,7 +123,32 @@ class ScraperService:
 
                 with open(save_path_on_disk, "wb") as f:
                     f.write(img_response.content)
-                relative_url_path = os.path.join(image_subfolder, unique_filename).replace("\\", "/")
+
+                # Đường dẫn tương đối bây giờ chỉ là tên file, vì image_subfolder đã là một phần của self.media_dir (nếu cấu trúc là vậy)
+                # Hoặc nếu self.media_dir là media_root/brand_images, thì unique_filename là đủ
+                # Để nhất quán với main.py, worker truyền MEDIA_PHYSICAL_DIR (PROJECT_ROOT/media_root/brand_images)
+                # Và LOCAL_MEDIA_BASE_URL/image_subfolder/unique_filename được dùng để tạo URL DB
+                # Vậy hàm này nên trả về phần sau image_subfolder, tức là chỉ unique_filename
+                # relative_url_path = os.path.join(image_subfolder, unique_filename).replace("\\", "/") # CRISTIANO (Điều chỉnh logic này)
+                # Giả sử LOCAL_MEDIA_BASE_URL/brand_images/unique_filename, thì hàm này chỉ cần trả về unique_filename
+                # nếu image_subfolder ("brand_images") đã được xử lý ở nơi khác khi tạo URL đầy đủ.
+
+                # Theo logic của file main.py đã sửa, thì `LOCAL_MEDIA_BASE_URL/{image_subfolder}/{returned_path}`
+                # Nếu `download_image` lưu vào `media_dir/unique_filename` (media_dir là `.../brand_images`)
+                # thì `returned_path` chỉ cần là `unique_filename`.
+                # Nhưng URL trong DB lại là `settings.LOCAL_MEDIA_BASE_URL.rstrip('/') + '/' + image_subfolder + '/' + unique_filename` (nếu `image_subfolder` là `brand_images`)
+                # Vậy `saved_relative_image_path` mà hàm này trả về nên là `image_subfolder/unique_filename`
+                # Điều này có nghĩa là `LOCAL_MEDIA_BASE_URL` không nên chứa `image_subfolder`.
+                # Hãy giả định rằng `settings.LOCAL_MEDIA_BASE_URL` là `http://localhost:8000/media`
+                # và chúng ta muốn URL cuối cùng là `http://localhost:8000/media/brand_images/filename.jpg`
+                # `self.media_dir` là `PROJECT_ROOT/media_root/brand_images`
+                # File được lưu tại `self.media_dir/unique_filename`
+                # Hàm này cần trả về `brand_images/unique_filename`
+
+                # Lấy tên của thư mục con cuối cùng từ self.media_dir
+                image_subfolder_name = os.path.basename(self.media_dir)  # CRISTIANO
+                relative_url_path = os.path.join(image_subfolder_name, unique_filename).replace("\\", "/")  # CRISTIANO
+
                 logging.info(
                     f"Hình ảnh đã được tải xuống thành công: {save_path_on_disk}. Phần URL tương đối: {relative_url_path}")
                 logging.debug(
@@ -150,8 +180,8 @@ class ScraperService:
                 max_delay_req = settings.MAX_REQUEST_DELAY
                 if attempt > 0:
                     retry_delay = random.uniform(min_delay_req + 1,
-                                                 max_delay_req + 2)  #     (thay đổi nhỏ về delay)
-                    logging.info(f"Thử lại {url} sau {retry_delay:.2f} giây...")  #     (thêm log)
+                                                 max_delay_req + 2)
+                    logging.info(f"Thử lại {url} sau {retry_delay:.2f} giây...")
                     await asyncio.sleep(retry_delay)
 
                 async with httpx.AsyncClient(
@@ -179,20 +209,22 @@ class ScraperService:
                         f"Lỗi HTTP nghiêm trọng {status_code} for {url}. Thay đổi proxy và thử lại nếu có thể.")
                     current_proxy = self.get_next_proxy()
                     proxies_config = {"http://": current_proxy, "https://": current_proxy} if current_proxy else None
-                    if attempt == effective_max_retries - 1: logging.error(f"Thử lại lần cuối thất bại với lỗi {status_code} cho {url}."); return None #     (log chi tiết)
+                    if attempt == effective_max_retries - 1: logging.error(
+                        f"Thử lại lần cuối thất bại với lỗi {status_code} cho {url}."); return None
                     await asyncio.sleep(random.uniform(5, 10))
                     continue
                 if attempt == effective_max_retries - 1: logging.error(
-                    f"Thử lại lần cuối thất bại cho {url} với lỗi {status_code}."); return None  #     (log chi tiết)
+                    f"Thử lại lần cuối thất bại cho {url} với lỗi {status_code}."); return None
                 await asyncio.sleep(random.uniform(2, 5))
 
-            except httpx.RequestError as e_req:
+            except httpx.RequestError as e_req:  # CRISTIANO (Sửa lỗi chính tả "equestError")
                 logging.warning(
                     f"Yêu cầu Lỗi (Cố gắng {attempt + 1}/{effective_max_retries}) for {url}: {str(e_req)}")
                 current_proxy = self.get_next_proxy()
-                proxies_config = {"http://": current_proxy, "https://": current_proxy} if current_proxy else None
+                proxies_config = {"http://": current_proxy,
+                                  "https": current_proxy} if current_proxy else None  # CRISTIANO (Sửa "https" -> "https://")
                 if attempt == effective_max_retries - 1: logging.error(
-                    f"Thử lại lần cuối thất bại cho {url} với lỗi request: {str(e_req)}."); return None  #     (log chi tiết)
+                    f"Thử lại lần cuối thất bại cho {url} với lỗi request: {str(e_req)}."); return None
                 await asyncio.sleep(random.uniform(3, 7))
 
             except Exception as e_generic:
@@ -200,12 +232,15 @@ class ScraperService:
                     f"Lỗi chung (Cố gắng {attempt + 1}/{effective_max_retries}) for {url}: {str(e_generic)}",
                     exc_info=True)
                 if attempt == effective_max_retries - 1: logging.error(
-                    f"Thử lại lần cuối thất bại cho {url} với lỗi request: {str(e_req)}."); return None  #     (log chi tiết)
+                    # CRISTIANO (Sửa lỗi tham chiếu e_req -> e_generic)
+                    f"Thử lại lần cuối thất bại cho {url} với lỗi chung: {str(e_generic)}."); return None
                 await asyncio.sleep(random.uniform(2, 5))
         logging.error(f"All {effective_max_retries} thử lại không thành công cho URL: {url}")
         return None
 
-    async def scrape_by_date_range(self,start_date: date_type,end_date: date_type,session: Session,initial_start_page: int,state_save_callback: Callable[[int], None]) -> Dict[str, Any]:  #
+    async def scrape_by_date_range(self, start_date: date_type, end_date: date_type, session: Session,
+                                   initial_start_page: int, state_save_callback: Callable[[int], None]) -> Dict[
+        str, Any]:
         current_page = initial_start_page
         brands_collected_in_this_run: List[Brand] = []
         request_limit_per_interval = settings.REQUEST_LIMIT_PER_INTERVAL
@@ -217,7 +252,7 @@ class ScraperService:
             "status": "unknown_error",
             "brands_processed_count": 0,
             "message": "Scraping did not complete as expected."
-        }  #    
+        }
 
         while True:
             if self.request_count >= request_limit_per_interval:
@@ -225,13 +260,13 @@ class ScraperService:
                 if time_diff.total_seconds() < request_interval_seconds:
                     sleep_duration = request_interval_seconds - time_diff.total_seconds()
                     logging.info(
-                        f"Đạt giới hạn request nội bộ. Nghỉ {sleep_duration:.2f} giây.")  # Log này từ code gốc, không phải Gemini thêm mới hoàn toàn
+                        f"Đạt giới hạn request nội bộ. Nghỉ {sleep_duration:.2f} giây.")
                     await asyncio.sleep(sleep_duration)
                 self.request_count = 0
                 self.last_request_time = datetime.now()
 
             start_str = start_date.strftime("%d.%m.%Y")
-            end_str = end_date.strftime("%d.%m.%Y")  # Khi cào theo ngày, end_str sẽ giống start_str
+            end_str = end_date.strftime("%d.%m.%Y")
             url = f"https://vietnamtrademark.net/search?fd={start_str}%20-%20{end_str}&p={current_page}"
 
             logging.info(
@@ -244,10 +279,9 @@ class ScraperService:
                     f"Không nhận được phản hồi cho trang {current_page} (URL: {url}). Dừng xử lý ngày này.")
                 scrape_status_result = {
                     "status": "request_error",
-                    "brands_processed_count": len(brands_collected_in_this_run),  #    
+                    "brands_processed_count": len(brands_collected_in_this_run),
                     "message": f"Failed to get response for page {current_page} of day {start_str}."
-                    #    
-                }  #    
+                }
                 break
 
             try:
@@ -257,17 +291,17 @@ class ScraperService:
                               exc_info=True)
                 scrape_status_result = {
                     "status": "soup_error",
-                    "brands_processed_count": len(brands_collected_in_this_run),  #    
+                    "brands_processed_count": len(brands_collected_in_this_run),
                     "message": f"HTML parsing error for page {current_page} of day {start_str}."
-                }  #    
+                }
                 break
 
             rows = soup.select("table.table tbody tr")
             if not rows:
                 if current_page == 1:
                     logging.info(
-                        f"Không tìm thấy dữ liệu nào trên trang {current_page} cho ngày {start_str}. Có thể ngày này không có nhãn hiệu.")  #    
-                    scrape_status_result = {  #    
+                        f"Không tìm thấy dữ liệu nào trên trang {current_page} cho ngày {start_str}. Có thể ngày này không có nhãn hiệu.")
+                    scrape_status_result = {
                         "status": "no_data_on_first_page",
                         "brands_processed_count": len(brands_collected_in_this_run),
                         "message": f"No data found on the first page for day {start_str}."
@@ -295,32 +329,31 @@ class ScraperService:
                         parsed_application_date = datetime.strptime(date_text_tag.text.strip(), "%d.%m.%Y").date()
                     except ValueError as ve:
                         logging.warning(
-                            f"Hàng {row_idx + 1} trang {current_page} ngày {start_str}: Lỗi parse ngày '{date_text_tag.text.strip()}': {ve}. Bỏ qua hàng.")  #     (log rõ ngày)
+                            f"Hàng {row_idx + 1} trang {current_page} ngày {start_str}: Lỗi parse ngày '{date_text_tag.text.strip()}': {ve}. Bỏ qua hàng.")
                         continue
-
 
                     if not (
                             start_date <= parsed_application_date <= end_date):
                         logging.warning(
-                            f"Hàng {row_idx + 1} trang {current_page}: Ngày nộp đơn {parsed_application_date.strftime('%Y-%m-%d')} "  #    
-                            f"nằm ngoài khoảng đang scrape ({start_date.strftime('%Y-%m-%d')} - {end_date.strftime('%Y-%m-%d')}). Bỏ qua.")  #    
-                        continue  #    
+                            f"Hàng {row_idx + 1} trang {current_page}: Ngày nộp đơn {parsed_application_date.strftime('%Y-%m-%d')} "
+                            f"nằm ngoài khoảng đang scrape ({start_date.strftime('%Y-%m-%d')} - {end_date.strftime('%Y-%m-%d')}). Bỏ qua.")
+                        continue
 
-                    ensure_partition_exists(parsed_application_date)
+                    # ensure_partition_exists(parsed_application_date) # CRISTIANO (Đã được chuyển ra ngoài worker function trong main.py)
 
                     brand_name_tag = row.select_one("td:nth-child(4) label")
                     brand_name = brand_name_tag.text.strip() if brand_name_tag else ""
 
                     image_tag = row.select_one("td.mau-nhan img")
                     image_url_original_src = image_tag["src"] if image_tag and image_tag.has_attr("src") else None
-                    final_image_url_for_db = None
+                    final_image_url_for_db = None  # CRISTIANO (Khởi tạo là None)
                     if image_url_original_src:
                         current_image_url_to_download = image_url_original_src
                         if current_image_url_to_download.startswith("/"):
-                            current_image_url_to_download = f"{SOURCE_WEBSITE_DOMAIN.rstrip('/')}{current_image_url_to_download}"
+                            current_image_url_to_download = f"{settings.SOURCE_WEBSITE_DOMAIN.rstrip('/')}{current_image_url_to_download}"  # CRISTIANO
                         saved_relative_image_path = await self.download_image(current_image_url_to_download)
                         if saved_relative_image_path:
-                            final_image_url_for_db = f"{LOCAL_MEDIA_BASE_URL.rstrip('/')}/{saved_relative_image_path.lstrip('/')}"
+                            final_image_url_for_db = f"{settings.LOCAL_MEDIA_BASE_URL.rstrip('/')}/{saved_relative_image_path.lstrip('/')}"  # CRISTIANO
 
                     product_group_tags = row.select("td:nth-child(5) span")
                     if product_group_tags:
@@ -336,7 +369,7 @@ class ScraperService:
                     application_number = application_number_tag.text.strip() if application_number_tag else ""
                     if not application_number:
                         logging.warning(
-                            f"Hàng {row_idx + 1} trang {current_page} ngày {start_str}: Thiếu số đơn. Bỏ qua hàng.")  #     (log rõ ngày)
+                            f"Hàng {row_idx + 1} trang {current_page} ngày {start_str}: Thiếu số đơn. Bỏ qua hàng.")
                         continue
 
                     applicant_tag = row.select_one("td:nth-child(9)")
@@ -347,26 +380,27 @@ class ScraperService:
 
                     product_detail_tag = row.select_one("td:nth-child(8) a")
                     product_detail_href = product_detail_tag.get(
-                        "href") if product_detail_tag else ""  # Lấy href an toàn
+                        "href") if product_detail_tag else ""
 
                     stmt = select(Brand).where(Brand.application_number == application_number)
                     existing_brand = session.exec(stmt).first()
 
                     if existing_brand:
                         logging.info(
-                            f"Brand với số đơn {application_number} (trang {current_page}, ngày {start_str}) đã tồn tại. Bỏ qua.")  #     (log rõ ngày)
+                            f"Brand với số đơn {application_number} (trang {current_page}, ngày {start_str}) đã tồn tại. Bỏ qua.")
                         continue
 
                     brand_obj = Brand(
                         brand_name=brand_name,
-                        image_url=final_image_url_for_db,
+                        image_url=final_image_url_for_db if final_image_url_for_db else "",
                         product_group=product_group,
                         status=status,
                         application_date=parsed_application_date,
                         application_number=application_number,
                         applicant=applicant,
                         representative=representative,
-                        product_detail=f"https://vietnamtrademark.net{product_detail_href}" if product_detail_href else ""
+                        product_detail=f"{settings.SOURCE_WEBSITE_DOMAIN.rstrip('/')}{product_detail_href}" if product_detail_href else ""
+                        # CRISTIANO (Thêm domain)
 
                     )
                     brands_extracted_from_this_page.append(brand_obj)
@@ -379,7 +413,6 @@ class ScraperService:
                         exc_info=True)
 
                     continue
-
 
             if brands_extracted_from_this_page:
                 logging.info(
@@ -402,16 +435,16 @@ class ScraperService:
 
             elif page_had_new_valid_data is False and rows:
                 logging.info(
-                    f"Trang {current_page} ngày {start_str} đã xử lý nhưng không có dữ liệu mới nào được thêm vào DB.")  #     (log rõ ngày)
+                    f"Trang {current_page} ngày {start_str} đã xử lý nhưng không có dữ liệu mới nào được thêm vào DB.")
                 state_save_callback(current_page)
 
             if scrape_status_result["status"] not in ["request_error", "soup_error",
                                                       "db_commit_error"]:
-                if brands_extracted_from_this_page or (page_had_new_valid_data is False and rows):  #    
-                    scrape_status_result = {  #    
+                if brands_extracted_from_this_page or (page_had_new_valid_data is False and rows):
+                    scrape_status_result = {
                         "status": "processing_pages",
 
-                        "brands_processed_count": len(brands_collected_in_this_run),  #    
+                        "brands_processed_count": len(brands_collected_in_this_run),
                         "message": f"Successfully processed page {current_page} for day {start_str}."
 
                     }
@@ -419,16 +452,14 @@ class ScraperService:
             current_page += 1
             await asyncio.sleep(random.uniform(min_request_delay, max_request_delay))
 
-
-
         scrape_status_result["brands_processed_count"] = len(brands_collected_in_this_run)
         if scrape_status_result["status"] == "completed_all_pages" and len(
                 brands_collected_in_this_run) == 0 and initial_start_page == 1:
             pass
 
         logging.info(
-            f"Kết thúc scrape cho ngày {start_date.strftime('%Y-%m-%d')}. "     
-            f"Trạng thái: {scrape_status_result['status']}. "      
+            f"Kết thúc scrape cho ngày {start_date.strftime('%Y-%m-%d')}. "
+            f"Trạng thái: {scrape_status_result['status']}. "
             f"Tổng số nhãn hiệu được xử lý trong lần gọi này: {scrape_status_result['brands_processed_count']}.")
         return scrape_status_result
 
@@ -445,7 +476,6 @@ class ScraperService:
         logger.info(f"🔍 Tìm thấy {len(pending_brands)} đơn có trạng thái 'Đang giải quyết' để kiểm tra.")
         updated_count = 0
         processed_count = 0
-
 
         min_delay_check = settings.MIN_DELAY_CHECK_PENDING
         max_delay_check = settings.MAX_DELAY_CHECK_PENDING
@@ -537,9 +567,9 @@ class ScraperService:
                 logger.info(f"💾 ĐÃ COMMIT THÀNH CÔNG: Cập nhật trạng thái cho {updated_count} đơn vào database.")
             except Exception as e_commit:
                 logger.error(f"❌ Lỗi khi commit các thay đổi trạng thái vào database: {e_commit}", exc_info=True)
-                session.rollback()  # Quan trọng: rollback nếu commit thất bại
+                session.rollback()
                 logger.info("Đã rollback transaction do lỗi commit.")
-        elif processed_count > 0:  # Chỉ log nếu có đơn được xử lý
+        elif processed_count > 0:
             logger.info("✅ Không có trạng thái đơn nào cần cập nhật sau khi kiểm tra toàn bộ danh sách.")
 
         logger.info(f"Hoàn tất kiểm tra. Đã xử lý {processed_count} đơn, cập nhật {updated_count} đơn.")

@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     RUN_DURATION_MINUTES: int = int(os.getenv("RUN_DURATION_MINUTES"))
     PAUSE_DURATION_MINUTES: int = int(os.getenv("PAUSE_DURATION_MINUTES"))
 
+    CONCURRENT_SCRAPING_TASKS: int = int(os.getenv("CONCURRENT_SCRAPING_TASKS"))
 
 
     class Config:
