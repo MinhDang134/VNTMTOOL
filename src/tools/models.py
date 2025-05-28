@@ -8,7 +8,6 @@ class Brand(SQLModel, table=True):
     __tablename__ = "brand"
     id: Optional[int] = Field(default=None, primary_key=True)
     application_number: str = Field(index=True)
-    # SỬA CHỖ NÀY: Bỏ index=True trong Field
     application_date: date = Field(sa_column=Column(Date))
     brand_name: str = Field(index=True)
     image_url: str

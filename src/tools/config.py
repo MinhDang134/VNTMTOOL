@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from pydantic_settings import BaseSettings
 from typing import List, Optional
 import os
@@ -12,14 +10,14 @@ class Settings(BaseSettings):
     DB_USER: Optional[str] = os.getenv("DB_USER")
     DB_PASSWORD: Optional[str] = os.getenv("DB_PASSWORD")
     DB_NAME: Optional[str] = os.getenv("DB_NAME")
-    START_DAY :int= os.getenv("START_DAY")
-    START_MOTH: int = os.getenv("START_MOTH")
-    START_YEAR: int = os.getenv("START_YEAR")
 
-    END_DAY:int = os.getenv("END_DAY")
-    END_YEAR: int = os.getenv("END_YEAR")
-    END_MOTH: int = os.getenv("END_MOTH")
+    INITIAL_SCRAPE_START_YEAR: int = int(os.getenv("INITIAL_SCRAPE_START_YEAR"))
+    INITIAL_SCRAPE_START_MOTH: int = int(os.getenv("INITIAL_SCRAPE_START_MOTH"))
+    INITIAL_SCRAPE_START_DAY: int = int(os.getenv("INITIAL_SCRAPE_START_DAY"))
 
+    OVERALL_SCRAPE_END_YEAR: Optional[int] = os.getenv("OVERALL_SCRAPE_END_YEAR")
+    OVERALL_SCRAPE_END_MOTH: Optional[int] = os.getenv("OVERALL_SCRAPE_END_MOTH")
+    OVERALL_SCRAPE_END_DAY: Optional[int] = os.getenv("OVERALL_SCRAPE_END_DAY")
 
     PROXY_IPS: List[str] = [
         ip for ip in [os.getenv("IP_ONE"), os.getenv("IP_TWO"), os.getenv("IP_THREE")] if ip is not None
@@ -42,6 +40,11 @@ class Settings(BaseSettings):
     MAX_REQUEST_DELAY: float = float(os.getenv("MAX_REQUEST_DELAY"))
     MIN_DELAY_CHECK_PENDING: float = float(os.getenv("MIN_DELAY_CHECK_PENDING"))
     MAX_DELAY_CHECK_PENDING: float = float(os.getenv("MAX_DELAY_CHECK_PENDING"))
+
+    RUN_DURATION_MINUTES: int = int(os.getenv("RUN_DURATION_MINUTES"))
+    PAUSE_DURATION_MINUTES: int = int(os.getenv("PAUSE_DURATION_MINUTES"))
+
+    CONCURRENT_SCRAPING_TASKS: int = int(os.getenv("CONCURRENT_SCRAPING_TASKS"))
 
 
     class Config:
