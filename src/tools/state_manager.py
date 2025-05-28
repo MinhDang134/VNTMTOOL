@@ -5,12 +5,8 @@ import logging
 from datetime import datetime, date
 
 
-# --- Các hàm load_scrape_state và save_scrape_state dựa trên snippet bạn cung cấp ---
-# Các hàm này quản lý việc lưu trang cuối cùng hoàn thành cho một "date_range_key" cụ thể
-# trong một file JSON có cấu trúc lồng nhau.
-
 def load_scrape_state(state_file_path: str, date_range_key: str,
-                      default_page: int = 1) -> int:  #  (thêm default_page vào signature cho nhất quán)
+                      default_page: int = 1) -> int:
     """
     Tải trang bắt đầu để cào cho một date_range_key cụ thể.
     Trả về trang tiếp theo cần cào (last_completed_page + 1).
@@ -24,22 +20,20 @@ def load_scrape_state(state_file_path: str, date_range_key: str,
         with open(state_file_path, 'r', encoding='utf-8') as f:
             states = json.load(f)
 
-        # Lấy last_completed_page từ cấu trúc lồng nhau, ví dụ: states["some_key"]["last_completed_page"]
         last_completed_page = states.get(date_range_key, {}).get("last_completed_page", 0)
 
         start_page = last_completed_page + 1
-        if start_page > default_page:  #  (So sánh với default_page)
+        if start_page > default_page:
             logging.info(
                 f"Tìm thấy trạng thái cho khóa '{date_range_key}'. Trang cuối hoàn thành: {last_completed_page}. Bắt đầu từ trang: {start_page}.")
         else:
             logging.info(f"Không có trạng thái trước đó cho khóa '{date_range_key}'. Bắt đầu từ trang {default_page}.")
         return start_page
     except (IOError, json.JSONDecodeError,
-            TypeError) as e:  #  (Thêm TypeError phòng trường hợp states không phải dict)
+            TypeError) as e:
         logging.warning(
             f"Lỗi khi tải trạng thái từ '{state_file_path}' cho khóa '{date_range_key}': {e}. Bắt đầu từ trang {default_page}.")
         return default_page
-
 
 def save_scrape_state(state_file_path: str, date_range_key: str, last_completed_page: int):
     """
@@ -49,25 +43,24 @@ def save_scrape_state(state_file_path: str, date_range_key: str, last_completed_
     try:
         states = {}
         if os.path.exists(state_file_path):
-            # Đọc file hiện tại một cách an toàn
             try:
                 with open(state_file_path, 'r', encoding='utf-8') as f:
                     content = f.read()
-                    if content.strip():  # Chỉ load nếu file không rỗng
+                    if content.strip():
                         states = json.loads(content)
-                    if not isinstance(states, dict):  # Đảm bảo states là một dict
+                    if not isinstance(states, dict):
                         logging.warning(
                             f"File trạng thái '{state_file_path}' không chứa một đối tượng JSON hợp lệ. Sẽ tạo mới.")
                         states = {}
             except json.JSONDecodeError:
                 logging.warning(f"File trạng thái '{state_file_path}' bị lỗi JSON hoặc trống. Sẽ tạo/ghi đè.")
-                states = {}  # Reset states nếu file lỗi
+                states = {}
             except IOError as e_read:
                 logging.error(f"Không thể đọc file trạng thái '{state_file_path}': {e_read}. Sẽ cố gắng ghi đè.")
                 states = {}
 
         # Tạo hoặc cập nhật mục cho date_range_key
-        if date_range_key not in states or not isinstance(states.get(date_range_key),dict):  # (đảm bảo states[date_range_key] là dict)
+        if date_range_key not in states or not isinstance(states.get(date_range_key),dict):
             states[date_range_key] = {}
         states[date_range_key]["last_completed_page"] = last_completed_page
 
@@ -79,20 +72,13 @@ def save_scrape_state(state_file_path: str, date_range_key: str, last_completed_
         logging.error(f"Không thể lưu trạng thái vào '{state_file_path}' cho khóa '{date_range_key}': {e_write}",
                       exc_info=True)
 
-
-# --- Các hàm mới/đã điều chỉnh để quản lý trạng thái điều khiển và xóa trạng thái ngày ---
-# Các hàm này rất cần thiết cho logic mới trong run_scraper.py
-
 CONTROL_STATE_FILENAME = "scraper_control_state.json"
-
 
 def get_control_state_path(project_root: str) -> str:   
     """Trả về đường dẫn đầy đủ đến file trạng thái điều khiển."""
     return os.path.join(project_root, CONTROL_STATE_FILENAME)
 
-
-def load_control_state(control_state_file_path: str) -> dict:   
-    """Tải trạng thái điều khiển (ví dụ: ngày cuối cùng đã xử lý xong)."""
+def load_control_state(control_state_file_path: str) -> dict:
     default_state = {"last_fully_completed_day": None}
     if not os.path.exists(control_state_file_path):
         logging.info(
@@ -123,7 +109,6 @@ def load_control_state(control_state_file_path: str) -> dict:
             exc_info=True)
         return default_state
 
-
 def save_control_state(control_state_file_path: str, last_fully_completed_day: date):
     """Lưu ngày cuối cùng đã được xử lý hoàn chỉnh vào file trạng thái điều khiển."""
     state_data = {"last_fully_completed_day": last_fully_completed_day.strftime("%Y-%m-%d")}
@@ -135,7 +120,6 @@ def save_control_state(control_state_file_path: str, last_fully_completed_day: d
     except Exception as e:
         logging.error(f"Lỗi khi lưu trạng thái điều khiển vào {control_state_file_path}: {e}",
                       exc_info=True)
-
 
 def clear_page_state_for_day(page_state_file_path: str, day_to_clear: date):
     """

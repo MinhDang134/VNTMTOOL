@@ -7,13 +7,7 @@ import logging
 from sqlalchemy import text
 
 
-engine = create_engine(
-    settings.DATABASE_URL,
-    echo=True,
-    pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10
-)
+engine = create_engine(settings.DATABASE_URL,echo=True,pool_pre_ping=True,pool_size=5,max_overflow=10)
 
 
 @contextmanager
@@ -29,7 +23,6 @@ def get_session() -> Generator[Session, None, None]:
     finally:
         session.close()
 
-
 def bulk_create(session: Session, objects: list[SQLModel]) -> None:
     try:
         session.add_all(objects)
@@ -38,33 +31,6 @@ def bulk_create(session: Session, objects: list[SQLModel]) -> None:
         session.rollback()
         logging.error(f"Bulk create error: {str(e)}")
         raise
-
-
-def bulk_update(session: Session, objects: list[SQLModel]) -> None:
-    try:
-        for obj in objects:
-            session.add(obj)
-        session.commit()
-    except Exception as e:
-        session.rollback()
-        logging.error(f"Bulk update error: {str(e)}")
-        raise
-
-
-def bulk_delete(session: Session, objects: list[SQLModel]) -> None:
-    try:
-        for obj in objects:
-            session.delete(obj)
-        session.commit()
-    except Exception as e:
-        session.rollback()
-        logging.error(f"Bulk delete error: {str(e)}")
-        raise
-
-
-def get_partition_name(date: datetime) -> str:
-    return f"brand_{date.strftime('%Y_%m')}"
-
 
 def get_partition_name(date: datetime) -> str:
     return f"brand_{date.strftime('%Y_%m')}"

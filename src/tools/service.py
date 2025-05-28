@@ -205,27 +205,18 @@ class ScraperService:
         logging.error(f"All {effective_max_retries} thử lại không thành công cho URL: {url}")
         return None
 
-    # Nằm trong class ScraperService của file src/tools/service.py
-
-    async def scrape_by_date_range(self,  #     (thay đổi signature và kiểu trả về)
-                                   start_date: date_type,  #    
-                                   end_date: date_type,  #    
-                                   session: Session,
-                                   initial_start_page: int,
-                                   state_save_callback: Callable[[int], None]
-                                   ) -> Dict[str, Any]:  #    
+    async def scrape_by_date_range(self,start_date: date_type,end_date: date_type,session: Session,initial_start_page: int,state_save_callback: Callable[[int], None]) -> Dict[str, Any]:  #
         current_page = initial_start_page
         brands_collected_in_this_run: List[Brand] = []
-        # stop_scraping_due_to_duplicate_policy = False #     (Biến này không được sử dụng, đã loại bỏ)
         request_limit_per_interval = settings.REQUEST_LIMIT_PER_INTERVAL
         request_interval_seconds = settings.REQUEST_INTERVAL_SECONDS
         min_request_delay = settings.MIN_REQUEST_DELAY
         max_request_delay = settings.MAX_REQUEST_DELAY
 
-        scrape_status_result = {  #    
-            "status": "unknown_error",  #    
-            "brands_processed_count": 0,  #    
-            "message": "Scraping did not complete as expected."  #    
+        scrape_status_result = {
+            "status": "unknown_error",
+            "brands_processed_count": 0,
+            "message": "Scraping did not complete as expected."
         }  #    
 
         while True:
@@ -244,15 +235,15 @@ class ScraperService:
             url = f"https://vietnamtrademark.net/search?fd={start_str}%20-%20{end_str}&p={current_page}"
 
             logging.info(
-                f"Đang cào trang: {current_page} cho ngày {start_str} (URL: {url})")  #     (log rõ ngày)
+                f"Đang cào trang: {current_page} cho ngày {start_str} (URL: {url})")
             response = await self.make_request(url)
             self.request_count += 1
 
             if not response:
                 logging.error(
-                    f"Không nhận được phản hồi cho trang {current_page} (URL: {url}). Dừng xử lý ngày này.")  #     (log rõ ngày)
-                scrape_status_result = {  #    
-                    "status": "request_error",  #    
+                    f"Không nhận được phản hồi cho trang {current_page} (URL: {url}). Dừng xử lý ngày này.")
+                scrape_status_result = {
+                    "status": "request_error",
                     "brands_processed_count": len(brands_collected_in_this_run),  #    
                     "message": f"Failed to get response for page {current_page} of day {start_str}."
                     #    
@@ -263,42 +254,42 @@ class ScraperService:
                 soup = BeautifulSoup(response.text, 'html.parser')
             except Exception as e_soup:
                 logging.error(f"Lỗi khi parse HTML cho trang {current_page} ngày {start_str}: {e_soup}",
-                              exc_info=True)  #     (log rõ ngày)
-                scrape_status_result = {  #    
-                    "status": "soup_error",  #    
+                              exc_info=True)
+                scrape_status_result = {
+                    "status": "soup_error",
                     "brands_processed_count": len(brands_collected_in_this_run),  #    
-                    "message": f"HTML parsing error for page {current_page} of day {start_str}."  #    
+                    "message": f"HTML parsing error for page {current_page} of day {start_str}."
                 }  #    
                 break
 
             rows = soup.select("table.table tbody tr")
-            if not rows:  # (logic xử lý khi không có rows được làm rõ hơn)
-                if current_page == 1:  # (Nếu là trang đầu tiên của ngày và không có dữ liệu)
+            if not rows:
+                if current_page == 1:
                     logging.info(
                         f"Không tìm thấy dữ liệu nào trên trang {current_page} cho ngày {start_str}. Có thể ngày này không có nhãn hiệu.")  #    
                     scrape_status_result = {  #    
-                        "status": "no_data_on_first_page",  #     (Trạng thái mới)
-                        "brands_processed_count": len(brands_collected_in_this_run),  #    
-                        "message": f"No data found on the first page for day {start_str}."  #    
-                    }  #    
-                else:  #     (Nếu không phải trang đầu, nghĩa là đã hết dữ liệu cho ngày này)
+                        "status": "no_data_on_first_page",
+                        "brands_processed_count": len(brands_collected_in_this_run),
+                        "message": f"No data found on the first page for day {start_str}."
+                    }
+                else:
                     logging.info(
-                        f"Không tìm thấy hàng (dữ liệu) nào trên trang {current_page} cho ngày {start_str}. Kết thúc cho ngày này.")  #    
-                    scrape_status_result = {  #    
-                        "status": "completed_all_pages",  #    
-                        "brands_processed_count": len(brands_collected_in_this_run),  #    
-                        "message": f"Successfully scraped all pages for day {start_str}."  #    
-                    }  #    
-                break  # Thoát vòng lặp trang
+                        f"Không tìm thấy hàng (dữ liệu) nào trên trang {current_page} cho ngày {start_str}. Kết thúc cho ngày này.")
+                    scrape_status_result = {
+                        "status": "completed_all_pages",
+                        "brands_processed_count": len(brands_collected_in_this_run),
+                        "message": f"Successfully scraped all pages for day {start_str}."
+                    }
+                break
 
             brands_extracted_from_this_page: List[Brand] = []
-            page_had_new_valid_data = False  # Theo dõi xem có dữ liệu mới thực sự được thêm không
+            page_had_new_valid_data = False
             for row_idx, row in enumerate(rows):
                 try:
                     date_text_tag = row.select_one("td:nth-child(7)")
                     if not date_text_tag or not date_text_tag.text.strip():
                         logging.warning(
-                            f"Hàng {row_idx + 1} trang {current_page} ngày {start_str}: Thiếu ngày nộp đơn. Bỏ qua hàng.")  #     (log rõ ngày)
+                            f"Hàng {row_idx + 1} trang {current_page} ngày {start_str}: Thiếu ngày nộp đơn. Bỏ qua hàng.")
                         continue
                     try:
                         parsed_application_date = datetime.strptime(date_text_tag.text.strip(), "%d.%m.%Y").date()
@@ -307,15 +298,15 @@ class ScraperService:
                             f"Hàng {row_idx + 1} trang {current_page} ngày {start_str}: Lỗi parse ngày '{date_text_tag.text.strip()}': {ve}. Bỏ qua hàng.")  #     (log rõ ngày)
                         continue
 
-                    # Đảm bảo application_date nằm trong khoảng ngày đang scrape (thường là cùng ngày)
+
                     if not (
-                            start_date <= parsed_application_date <= end_date):  #     (kiểm tra ngày hợp lệ)
+                            start_date <= parsed_application_date <= end_date):
                         logging.warning(
                             f"Hàng {row_idx + 1} trang {current_page}: Ngày nộp đơn {parsed_application_date.strftime('%Y-%m-%d')} "  #    
                             f"nằm ngoài khoảng đang scrape ({start_date.strftime('%Y-%m-%d')} - {end_date.strftime('%Y-%m-%d')}). Bỏ qua.")  #    
                         continue  #    
 
-                    ensure_partition_exists(parsed_application_date)  # Hàm này từ database.py
+                    ensure_partition_exists(parsed_application_date)
 
                     brand_name_tag = row.select_one("td:nth-child(4) label")
                     brand_name = brand_name_tag.text.strip() if brand_name_tag else ""
@@ -332,7 +323,7 @@ class ScraperService:
                             final_image_url_for_db = f"{LOCAL_MEDIA_BASE_URL.rstrip('/')}/{saved_relative_image_path.lstrip('/')}"
 
                     product_group_tags = row.select("td:nth-child(5) span")
-                    if product_group_tags:  # Đảm bảo logic này đầy đủ
+                    if product_group_tags:
                         product_group_values = [tag.text.strip() for tag in product_group_tags if tag.text.strip()]
                         product_group = ", ".join(product_group_values)
                     else:
@@ -364,7 +355,7 @@ class ScraperService:
                     if existing_brand:
                         logging.info(
                             f"Brand với số đơn {application_number} (trang {current_page}, ngày {start_str}) đã tồn tại. Bỏ qua.")  #     (log rõ ngày)
-                        continue  # Bỏ qua brand đã tồn tại
+                        continue
 
                     brand_obj = Brand(
                         brand_name=brand_name,
@@ -376,92 +367,74 @@ class ScraperService:
                         applicant=applicant,
                         representative=representative,
                         product_detail=f"https://vietnamtrademark.net{product_detail_href}" if product_detail_href else ""
-                        # Xây dựng URL đầy đủ
+
                     )
                     brands_extracted_from_this_page.append(brand_obj)
                     page_had_new_valid_data = True
 
                 except Exception as e_row_processing:
-                    row_html_snippet = str(row)[:250]  # Giữ lại để debug
+                    row_html_snippet = str(row)[:250]
                     logging.error(
                         f"Lỗi xử lý hàng {row_idx + 1} trên trang {current_page} ngày {start_str}: {e_row_processing}\nHTML Snippet: {row_html_snippet}",
-                        exc_info=True)  #     (log rõ ngày)
-                    # Không break ở đây, cố gắng xử lý các hàng khác trên trang
+                        exc_info=True)
+
                     continue
 
-            # Xử lý lưu dữ liệu của trang hiện tại vào DB
+
             if brands_extracted_from_this_page:
                 logging.info(
-                    f"Trang {current_page} ngày {start_str}: Trích xuất được {len(brands_extracted_from_this_page)} nhãn hiệu mới.")  #     (log rõ ngày)
+                    f"Trang {current_page} ngày {start_str}: Trích xuất được {len(brands_extracted_from_this_page)} nhãn hiệu mới.")
                 try:
-                    bulk_create(session, brands_extracted_from_this_page)  # bulk_create đã tự commit/rollback
-                    # logging.info( # Log này được di chuyển vào bulk_create hoặc bỏ đi nếu bulk_create đã log
-                    #     f"ĐÃ COMMIT THÀNH CÔNG {len(brands_extracted_from_this_page)} nhãn hiệu từ trang {current_page} ngày {start_str} vào DB.")
-                    # session.commit() #     (ĐÃ LOẠI BỎ - bulk_create tự xử lý)
-                    # logging.info( #     (ĐÃ LOẠI BỎ - log trùng lặp)
-                    #     f"ĐÃ COMMIT THÀNH CÔNG {len(brands_extracted_from_this_page)} nhãn hiệu từ trang {current_page} vào DB.")
+                    bulk_create(session, brands_extracted_from_this_page)
                     brands_collected_in_this_run.extend(brands_extracted_from_this_page)
-                    state_save_callback(current_page)  # Lưu trang vừa hoàn thành
+                    state_save_callback(current_page)
 
-                except Exception as e_db_commit:  # Lỗi này thường do bulk_create raise lại sau khi rollback
+                except Exception as e_db_commit:
                     logging.error(
                         f"Lỗi khi thêm dữ liệu cho trang {current_page} ngày {start_str} vào DB (có thể do bulk_create): {e_db_commit}",
-                        exc_info=True)  #     (log rõ ngày và nguồn lỗi)
-                    scrape_status_result = {  #    
-                        "status": "db_commit_error",  #    
+                        exc_info=True)
+                    scrape_status_result = {
+                        "status": "db_commit_error",
                         "brands_processed_count": len(brands_collected_in_this_run),
-                        #     (có thể một số đã được thêm từ các trang trước đó của ngày này nếu có lỗi giữa chừng)
-                        "message": f"DB commit error on page {current_page} for day {start_str}."  #    
-                    }  #    
-                    break  # Thoát vòng lặp trang nếu lỗi DB nghiêm trọng
+                        "message": f"DB commit error on page {current_page} for day {start_str}."
+                    }
+                    break
 
-            elif page_had_new_valid_data is False and rows:  # Trang có rows nhưng không có data mới (ví dụ: toàn bộ đã tồn tại hoặc bị skip do lỗi parse từng hàng)
+            elif page_had_new_valid_data is False and rows:
                 logging.info(
                     f"Trang {current_page} ngày {start_str} đã xử lý nhưng không có dữ liệu mới nào được thêm vào DB.")  #     (log rõ ngày)
-                state_save_callback(current_page)  # Vẫn lưu trạng thái trang đã xử lý
+                state_save_callback(current_page)
 
-            # Cập nhật trạng thái thành công tạm thời cho trang này nếu không có lỗi nào break vòng lặp
-            # Điều này quan trọng nếu vòng lặp `while True` kết thúc do `if not rows:`
-            # (tức là hoàn thành tất cả các trang cho ngày đó)
             if scrape_status_result["status"] not in ["request_error", "soup_error",
-                                                      "db_commit_error"]:  #     (chỉ cập nhật nếu chưa có lỗi nghiêm trọng)
+                                                      "db_commit_error"]:
                 if brands_extracted_from_this_page or (page_had_new_valid_data is False and rows):  #    
                     scrape_status_result = {  #    
                         "status": "processing_pages",
-                        #     (Trạng thái tạm thời, sẽ được cập nhật cuối cùng)
+
                         "brands_processed_count": len(brands_collected_in_this_run),  #    
                         "message": f"Successfully processed page {current_page} for day {start_str}."
-                        #    
-                    }  #    
+
+                    }
 
             current_page += 1
-            await asyncio.sleep(random.uniform(min_request_delay, max_request_delay))  # Delay giữa các trang
+            await asyncio.sleep(random.uniform(min_request_delay, max_request_delay))
 
-        # Cập nhật lại tổng số brands_processed_count lần cuối trước khi return
-        # và đảm bảo message phản ánh đúng trạng thái cuối cùng
-        scrape_status_result["brands_processed_count"] = len(brands_collected_in_this_run)  #    
-        final_message = scrape_status_result.get("message",
-                                                 "Trạng thái không xác định khi kết thúc.")  #    
+
+
+        scrape_status_result["brands_processed_count"] = len(brands_collected_in_this_run)
         if scrape_status_result["status"] == "completed_all_pages" and len(
-                brands_collected_in_this_run) == 0 and initial_start_page == 1:  #    
-            # Trường hợp này có thể là "no_data_on_first_page" nhưng "if not rows" đã set là "completed_all_pages"
-            # Cần làm rõ hơn nếu không có brand nào được thu thập VÀ là trang đầu tiên thử nghiệm cho ngày đó
-            # Tuy nhiên, logic hiện tại "no_data_on_first_page" đã xử lý trường hợp này ở trên.
-            pass  #    
+                brands_collected_in_this_run) == 0 and initial_start_page == 1:
+            pass
 
-        logging.info(  #    
-            f"Kết thúc scrape cho ngày {start_date.strftime('%Y-%m-%d')}. "  #    
-            f"Trạng thái: {scrape_status_result['status']}. "  #    
-            f"Tổng số nhãn hiệu được xử lý trong lần gọi này: {scrape_status_result['brands_processed_count']}.")  #    
-        return scrape_status_result  #    
-
-    # Nằm trong class ScraperService của file src/tools/service.py
+        logging.info(
+            f"Kết thúc scrape cho ngày {start_date.strftime('%Y-%m-%d')}. "     
+            f"Trạng thái: {scrape_status_result['status']}. "      
+            f"Tổng số nhãn hiệu được xử lý trong lần gọi này: {scrape_status_result['brands_processed_count']}.")
+        return scrape_status_result
 
     async def check_pending_brands(self, session: Session):
-        # Tạo một logger riêng cho phương thức này để dễ theo dõi
         logger = logging.getLogger(f"{self.__class__.__name__}.check_pending_brands")
         logger.info("Bắt đầu kiểm tra các đơn có trạng thái 'Đang giải quyết'...")
-
         statement = select(Brand).where(Brand.status == "Đang giải quyết")
         pending_brands: List[Brand] = session.exec(statement).all()
 
@@ -473,9 +446,9 @@ class ScraperService:
         updated_count = 0
         processed_count = 0
 
-        # Lấy giá trị delay từ settings (thêm lại từ phiên bản trước đó của Gemini)
-        min_delay_check = settings.MIN_DELAY_CHECK_PENDING  #     (thêm lại)
-        max_delay_check = settings.MAX_DELAY_CHECK_PENDING  #     (thêm lại)
+
+        min_delay_check = settings.MIN_DELAY_CHECK_PENDING
+        max_delay_check = settings.MAX_DELAY_CHECK_PENDING
 
         for brand_idx, brand in enumerate(pending_brands):
             processed_count += 1
@@ -484,21 +457,19 @@ class ScraperService:
 
             if not brand.application_number:
                 logger.warning(f"⚠️ Đơn có ID {brand.id} không có số đơn (application_number). Bỏ qua.")
-                # Delay nhỏ trước khi chuyển sang đơn tiếp theo
                 await asyncio.sleep(
-                    random.uniform(min_delay_check / 2, max_delay_check / 2))  #     (thêm lại delay)
+                    random.uniform(min_delay_check / 2, max_delay_check / 2))
                 continue
 
             url = f"https://vietnamtrademark.net/search?q={brand.application_number.strip()}"
             logger.info(f"🌍 Gọi đến VietnamTrademark: {url}")
 
-            response = await self.make_request(url)  # make_request đã có retry và delay riêng
+            response = await self.make_request(url)
             if not response:
                 logger.warning(
                     f"❌ Không nhận được phản hồi từ VietnamTrademark cho số đơn {brand.application_number} (ID: {brand.id}). Bỏ qua đơn này.")
-                # Delay trước khi chuyển sang đơn tiếp theo sau lỗi request
                 await asyncio.sleep(
-                    random.uniform(min_delay_check, max_delay_check))  #     (thêm lại delay)
+                    random.uniform(min_delay_check, max_delay_check))
                 continue
 
             try:
@@ -509,9 +480,8 @@ class ScraperService:
                 if not rows_on_page:
                     logger.warning(
                         f"📄 Không tìm thấy bảng/hàng dữ liệu nào trên trang kết quả cho số đơn {brand.application_number}.")
-                    # Delay nếu không tìm thấy dữ liệu
                     await asyncio.sleep(
-                        random.uniform(min_delay_check / 2, max_delay_check / 2))  #     (thêm lại delay)
+                        random.uniform(min_delay_check / 2, max_delay_check / 2))
                     continue
 
                 for r_check in rows_on_page:
@@ -523,9 +493,9 @@ class ScraperService:
                 if not target_row:
                     logger.warning(
                         f"📄 Không tìm thấy hàng khớp với số đơn {brand.application_number} trên trang kết quả tìm kiếm.")
-                    # Delay nếu không tìm thấy hàng khớp
+
                     await asyncio.sleep(
-                        random.uniform(min_delay_check / 2, max_delay_check / 2))  #     (thêm lại delay)
+                        random.uniform(min_delay_check / 2, max_delay_check / 2))
                     continue
 
                 status_tag = target_row.select_one("td.trang-thai span.badge")
@@ -537,9 +507,8 @@ class ScraperService:
                     if new_status != brand.status:
                         old_status = brand.status
                         brand.status = new_status
-                        # Cập nhật thời gian, quan trọng để theo dõi khi nào bản ghi được sửa đổi
                         brand.updated_at = datetime.now(timezone.utc)
-                        session.add(brand)  # Đánh dấu đối tượng brand để SQLAlchemy/SQLModel biết cần cập nhật
+                        session.add(brand)
                         updated_count += 1
                         logger.info(
                             f"🔄 CẬP NHẬT: Đơn {brand.application_number} (ID: {brand.id}) thay đổi trạng thái từ '{old_status}' -> '{new_status}'")
@@ -554,18 +523,14 @@ class ScraperService:
                 logger.error(
                     f"❌ Lỗi khi xử lý/bóc tách trạng thái cho đơn {brand.application_number} (ID: {brand.id}): {str(e_check)}",
                     exc_info=True)
-                # Dù có lỗi, vẫn tiếp tục với đơn tiếp theo sau một khoảng delay
                 await asyncio.sleep(
-                    random.uniform(min_delay_check, max_delay_check))  #     (thêm lại delay)
+                    random.uniform(min_delay_check, max_delay_check))
                 continue
 
-            # Delay giữa việc kiểm tra các đơn đang chờ xử lý, để tránh làm quá tải server
-            # Ngay cả khi xử lý thành công, cũng nên có một khoảng nghỉ nhỏ.
-            if brand_idx < len(pending_brands) - 1:  # Không delay sau đơn cuối cùng
+            if brand_idx < len(pending_brands) - 1:
                 await asyncio.sleep(
-                    random.uniform(min_delay_check, max_delay_check))  #     (thêm lại delay)
+                    random.uniform(min_delay_check, max_delay_check))
 
-        # Commit tất cả các thay đổi một lần sau khi duyệt qua hết các pending_brands
         if updated_count > 0:
             try:
                 session.commit()

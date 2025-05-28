@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from pydantic_settings import BaseSettings
 from typing import List, Optional
 import os
@@ -12,13 +10,11 @@ class Settings(BaseSettings):
     DB_USER: Optional[str] = os.getenv("DB_USER")
     DB_PASSWORD: Optional[str] = os.getenv("DB_PASSWORD")
     DB_NAME: Optional[str] = os.getenv("DB_NAME")
-    # Ngày bắt đầu tổng thể nếu không có trạng thái nào được lưu
-    INITIAL_SCRAPE_START_YEAR: int = int(os.getenv("INITIAL_SCRAPE_START_YEAR", "2022"))
-    INITIAL_SCRAPE_START_MOTH: int = int(os.getenv("INITIAL_SCRAPE_START_MOTH", "1"))
-    INITIAL_SCRAPE_START_DAY: int = int(os.getenv("INITIAL_SCRAPE_START_DAY", "1"))
 
-    # Ngày kết thúc tổng thể (ví dụ, không cào quá ngày này)
-    # Nếu không đặt, có thể mặc định là ngày hôm qua
+    INITIAL_SCRAPE_START_YEAR: int = int(os.getenv("INITIAL_SCRAPE_START_YEAR"))
+    INITIAL_SCRAPE_START_MOTH: int = int(os.getenv("INITIAL_SCRAPE_START_MOTH"))
+    INITIAL_SCRAPE_START_DAY: int = int(os.getenv("INITIAL_SCRAPE_START_DAY"))
+
     OVERALL_SCRAPE_END_YEAR: Optional[int] = os.getenv("OVERALL_SCRAPE_END_YEAR")
     OVERALL_SCRAPE_END_MOTH: Optional[int] = os.getenv("OVERALL_SCRAPE_END_MOTH")
     OVERALL_SCRAPE_END_DAY: Optional[int] = os.getenv("OVERALL_SCRAPE_END_DAY")
@@ -45,9 +41,8 @@ class Settings(BaseSettings):
     MIN_DELAY_CHECK_PENDING: float = float(os.getenv("MIN_DELAY_CHECK_PENDING"))
     MAX_DELAY_CHECK_PENDING: float = float(os.getenv("MAX_DELAY_CHECK_PENDING"))
 
-    # Thời gian cho chu kỳ chạy/nghỉ
-    RUN_DURATION_MINUTES: int = int(os.getenv("RUN_DURATION_MINUTES", "10"))
-    PAUSE_DURATION_MINUTES: int = int(os.getenv("PAUSE_DURATION_MINUTES", "5"))
+    RUN_DURATION_MINUTES: int = int(os.getenv("RUN_DURATION_MINUTES"))
+    PAUSE_DURATION_MINUTES: int = int(os.getenv("PAUSE_DURATION_MINUTES"))
 
 
 
