@@ -16,8 +16,7 @@ import logging
 
 
 
-# LOCAL_MEDIA_BASE_URL = settings.LOCAL_MEDIA_BASE_URL
-# SOURCE_WEBSITE_DOMAIN = settings.SOURCE_WEBSITE_DOMAIN
+
 
 class ScraperService:
     def __init__(self, media_dir: str):    
@@ -124,27 +123,6 @@ class ScraperService:
                 with open(save_path_on_disk, "wb") as f:
                     f.write(img_response.content)
 
-                # Đường dẫn tương đối bây giờ chỉ là tên file, vì image_subfolder đã là một phần của self.media_dir (nếu cấu trúc là vậy)
-                # Hoặc nếu self.media_dir là media_root/brand_images, thì unique_filename là đủ
-                # Để nhất quán với main.py, worker truyền MEDIA_PHYSICAL_DIR (PROJECT_ROOT/media_root/brand_images)
-                # Và LOCAL_MEDIA_BASE_URL/image_subfolder/unique_filename được dùng để tạo URL DB
-                # Vậy hàm này nên trả về phần sau image_subfolder, tức là chỉ unique_filename
-                # relative_url_path = os.path.join(image_subfolder, unique_filename).replace("\\", "/")    (Điều chỉnh logic này)
-                # Giả sử LOCAL_MEDIA_BASE_URL/brand_images/unique_filename, thì hàm này chỉ cần trả về unique_filename
-                # nếu image_subfolder ("brand_images") đã được xử lý ở nơi khác khi tạo URL đầy đủ.
-
-                # Theo logic của file main.py đã sửa, thì `LOCAL_MEDIA_BASE_URL/{image_subfolder}/{returned_path}`
-                # Nếu `download_image` lưu vào `media_dir/unique_filename` (media_dir là `.../brand_images`)
-                # thì `returned_path` chỉ cần là `unique_filename`.
-                # Nhưng URL trong DB lại là `settings.LOCAL_MEDIA_BASE_URL.rstrip('/') + '/' + image_subfolder + '/' + unique_filename` (nếu `image_subfolder` là `brand_images`)
-                # Vậy `saved_relative_image_path` mà hàm này trả về nên là `image_subfolder/unique_filename`
-                # Điều này có nghĩa là `LOCAL_MEDIA_BASE_URL` không nên chứa `image_subfolder`.
-                # Hãy giả định rằng `settings.LOCAL_MEDIA_BASE_URL` là `http://localhost:8000/media`
-                # và chúng ta muốn URL cuối cùng là `http://localhost:8000/media/brand_images/filename.jpg`
-                # `self.media_dir` là `PROJECT_ROOT/media_root/brand_images`
-                # File được lưu tại `self.media_dir/unique_filename`
-                # Hàm này cần trả về `brand_images/unique_filename`
-
                 # Lấy tên của thư mục con cuối cùng từ self.media_dir
                 image_subfolder_name = os.path.basename(self.media_dir)    
                 relative_url_path = os.path.join(image_subfolder_name, unique_filename).replace("\\", "/")    
@@ -238,9 +216,7 @@ class ScraperService:
         logging.error(f"All {effective_max_retries} thử lại không thành công cho URL: {url}")
         return None
 
-    async def scrape_by_date_range(self, start_date: date_type, end_date: date_type, session: Session,
-                                   initial_start_page: int, state_save_callback: Callable[[int], None]) -> Dict[
-        str, Any]:
+    async def scrape_by_date_range(self, start_date: date_type, end_date: date_type, session: Session,initial_start_page: int, state_save_callback: Callable[[int], None]) -> Dict[str, Any]:
         current_page = initial_start_page
         brands_collected_in_this_run: List[Brand] = []
         request_limit_per_interval = settings.REQUEST_LIMIT_PER_INTERVAL

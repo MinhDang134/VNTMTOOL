@@ -1,16 +1,22 @@
 from datetime import datetime, timedelta
-from sqlmodel import SQLModel, Session, create_engine
+from sqlmodel import SQLModel, Session, create_engine as create_engine_sqlmodel
 from contextlib import contextmanager
 from typing import Generator
 from src.tools.config import settings
 import logging
-from sqlalchemy import text
-
+from sqlalchemy import text , Engine
+db_engine: Engine = create_engine_sqlmodel(
+    settings.DATABASE_URL,
+    echo=True, # Có thể tắt echo=True trong production
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10
+)
 # engine = create_engine(settings.DATABASE_URL,echo=True,pool_pre_ping=True,pool_size=5,max_overflow=10)   (Dòng này sẽ được comment hoặc xóa)
 
 @contextmanager
-def get_session(engine_instance: create_engine) -> Generator[Session, None, None]:
-    session = Session(engine_instance)  
+def get_session(engine_to_use: Engine = db_engine) -> Generator[Session, None, None]:
+    session = Session(engine_to_use)
     try:
         yield session
         session.commit()
@@ -33,7 +39,7 @@ def bulk_create(session: Session, objects: list[SQLModel]) -> None:
 def get_partition_name(date: datetime) -> str:
     return f"brand_{date.strftime('%Y_%m')}"
 
-def ensure_partition_exists(date: datetime, engine_instance: create_engine) -> None:
+def ensure_partition_exists(date: datetime,engine_to_use: Engine = db_engine) -> None:
     partition_name = get_partition_name(date)
     start_date = date.replace(day=1)
     end_date = (start_date + timedelta(days=32)).replace(day=1)
@@ -55,7 +61,7 @@ def ensure_partition_exists(date: datetime, engine_instance: create_engine) -> N
     """)
 
     try:
-        with engine_instance.connect() as conn:  
+        with engine_to_use.connect() as conn:
             trans = conn.begin()  
             try:  
                 exists_result = conn.execute(check_query, {"table_name": partition_name})  
