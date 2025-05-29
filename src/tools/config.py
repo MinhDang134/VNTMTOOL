@@ -1,5 +1,3 @@
-# src/tools/config/settings.py
-
 from pydantic_settings import BaseSettings
 from typing import List, Optional
 import os
@@ -7,21 +5,28 @@ from dotenv import load_dotenv
 load_dotenv()
 class Settings(BaseSettings):
 
-    # Database settings
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://user:password@host:port/dbname") # Thêm default
+
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://user:password@host:port/dbname")
     DB_USER: Optional[str] = os.getenv("DB_USER")
     DB_PASSWORD: Optional[str] = os.getenv("DB_PASSWORD")
     DB_NAME: Optional[str] = os.getenv("DB_NAME")
-    # Proxy settings
-    # Đảm bảo các biến môi trường IP_ONE, PORT_ONE,... tồn tại hoặc cung cấp giá trị mặc định nếu chúng có thể rỗng
+
+    INITIAL_SCRAPE_START_YEAR: int = int(os.getenv("INITIAL_SCRAPE_START_YEAR"))
+    INITIAL_SCRAPE_START_MOTH: int = int(os.getenv("INITIAL_SCRAPE_START_MOTH"))
+    INITIAL_SCRAPE_START_DAY: int = int(os.getenv("INITIAL_SCRAPE_START_DAY"))
+
+    OVERALL_SCRAPE_END_YEAR: Optional[int] = os.getenv("OVERALL_SCRAPE_END_YEAR")
+    OVERALL_SCRAPE_END_MOTH: Optional[int] = os.getenv("OVERALL_SCRAPE_END_MOTH")
+    OVERALL_SCRAPE_END_DAY: Optional[int] = os.getenv("OVERALL_SCRAPE_END_DAY")
+
     PROXY_IPS: List[str] = [
         ip for ip in [os.getenv("IP_ONE"), os.getenv("IP_TWO"), os.getenv("IP_THREE")] if ip is not None
     ]
     PROXY_PORTS: List[int] = [
         int(port) for port in [os.getenv("PORT_ONE"), os.getenv("PORT_TWO"), os.getenv("PORT_THREE")] if port is not None and port.isdigit()
     ]
-    PROXY_USERNAME: Optional[str] = os.getenv("USER_NAME") # Giữ USER_NAME nếu bạn đã đặt trong .env
-    PROXY_PASSWORD: Optional[str] = os.getenv("USER_PASSWORD") # Giữ USER_PASSWORD
+    PROXY_USERNAME: Optional[str] = os.getenv("USER_NAME")
+    PROXY_PASSWORD: Optional[str] = os.getenv("USER_PASSWORD")
     LOCAL_MEDIA_BASE_URL: str = os.getenv("LOCAL_MEDIA_BASE_URL")
     SOURCE_WEBSITE_DOMAIN: str = os.getenv("SOURCE_WEBSITE_DOMAIN")
     MAX_REQUEST_RETRIES: int = int(os.getenv("MAX_REQUEST_RETRIES"))
@@ -29,77 +34,25 @@ class Settings(BaseSettings):
     SSL_VERIFY_REQUEST: bool = os.getenv("SSL_VERIFY_REQUEST").lower() == 'true'
     SSL_VERIFY_DOWNLOAD: bool = os.getenv("SSL_VERIFY_DOWNLOAD").lower() == 'true'
     DOWNLOAD_TIMEOUT: float = float(os.getenv("DOWNLOAD_TIMEOUT"))
-    REQUEST_LIMIT_PER_INTERVAL: int = int(os.getenv("REQUEST_LIMIT", os.getenv("REQUEST_LIMIT_PER_INTERVAL"))) # Sử dụng REQUEST_LIMIT của bạn nếu có
-    REQUEST_INTERVAL_SECONDS: int = int(os.getenv("REQUEST_INTERVAL_SECONDS")) # số  giây cho REQUEST_LIMIT ở trên
-    MIN_REQUEST_DELAY: float = float(os.getenv("REQUEST_DELAY", os.getenv("MIN_REQUEST_DELAY"))) # Sử dụng REQUEST_DELAY của bạn làm min
+    REQUEST_LIMIT_PER_INTERVAL: int = int(os.getenv("REQUEST_LIMIT", os.getenv("REQUEST_LIMIT_PER_INTERVAL")))
+    REQUEST_INTERVAL_SECONDS: int = int(os.getenv("REQUEST_INTERVAL_SECONDS"))
+    MIN_REQUEST_DELAY: float = float(os.getenv("REQUEST_DELAY", os.getenv("MIN_REQUEST_DELAY")))
     MAX_REQUEST_DELAY: float = float(os.getenv("MAX_REQUEST_DELAY"))
     MIN_DELAY_CHECK_PENDING: float = float(os.getenv("MIN_DELAY_CHECK_PENDING"))
     MAX_DELAY_CHECK_PENDING: float = float(os.getenv("MAX_DELAY_CHECK_PENDING"))
+    MEDIA_BRAND_IMAGES_SUBPATH : Optional[str] = os.getenv("MEDIA_BRAND_IMAGES_SUBPATH")
+
+    RUN_DURATION_MINUTES: int = int(os.getenv("RUN_DURATION_MINUTES"))
+    PAUSE_DURATION_MINUTES: int = int(os.getenv("PAUSE_DURATION_MINUTES"))
+
+    CONCURRENT_SCRAPING_TASKS: int = int(os.getenv("CONCURRENT_SCRAPING_TASKS"))
 
 
     class Config:
         env_file = ".env"
         env_file_encoding = 'utf-8'
         extra = 'ignore'
-        # extra = "allow" # Bạn có thể giữ 'allow' hoặc đổi thành 'ignore'
-        # 'ignore' sẽ an toàn hơn nếu bạn muốn Pydantic chỉ load các trường đã định nghĩa.
+
 
 settings = Settings()
 
-
-
-# In ra để kiểm tra (chỉ khi debug, nên xóa sau đó)
-
-# print("Loaded settings:")
-
-# print(f"  DATABASE_URL: {settings.DATABASE_URL}")
-
-# print(f"  PROXY_IPS: {settings.PROXY_IPS}")
-
-# print(f"  PROXY_PORTS: {settings.PROXY_PORTS}")
-
-# print(f"  LOCAL_MEDIA_BASE_URL: {settings.LOCAL_MEDIA_BASE_URL}")
-
-# print(f"  MIN_REQUEST_DELAY: {settings.MIN_REQUEST_DELAY}")
-
-
-
-
-# from pydantic_settings import BaseSettings
-# from typing import List
-# import os
-# from dotenv import load_dotenv
-#
-# load_dotenv()
-#
-# class Settings(BaseSettings):
-#     # Database settings
-#     DATABASE_URL: str = os.getenv("DATABASE_URL")
-#     DB_USER: str = os.getenv("DB_USER")
-#     DB_PASSWORD: str = os.getenv("DB_PASSWORD")
-#     DB_NAME: str = os.getenv("DB_NAME")
-#
-#     # Proxy settings
-#     PROXY_IPS: List[str] = [
-#         os.getenv("IP_ONE"),
-#         os.getenv("IP_TWO"),
-#         os.getenv("IP_THREE")
-#     ]
-#     PROXY_PORTS: List[int] = [
-#         int(os.getenv("PORT_ONE")),
-#         int(os.getenv("PORT_TWO")),
-#         int(os.getenv("PORT_THREE"))
-#     ]
-#     PROXY_USERNAME: str = os.getenv("USER_NAME")
-#     PROXY_PASSWORD: str = os.getenv("USER_PASSWORD")
-#
-#     # Scraping settings
-#     REQUEST_LIMIT: int = 10  # requests per minute
-#     REQUEST_DELAY: float = 0.1  # seconds between requests
-#
-#     class Config:
-#         env_file = ".env"
-#         extra = "allow"
-#
-# settings = Settings()
-#

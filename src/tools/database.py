@@ -1,25 +1,33 @@
+import os
+import sys
 from datetime import datetime, timedelta
-
-from sqlmodel import SQLModel, Session, create_engine
+from sqlmodel import SQLModel, Session, create_engine as create_engine_sqlmodel
 from contextlib import contextmanager
 from typing import Generator
 from src.tools.config import settings
 import logging
-from sqlalchemy import text
+from sqlalchemy import text , Engine
 
-# Tạo engine kết nối đến PostgreSQL
-engine = create_engine(
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+SRC_DIR_PATH = os.path.dirname(SCRIPT_DIR)
+PROJECT_ROOT_PATH = os.path.dirname(SRC_DIR_PATH)
+
+if PROJECT_ROOT_PATH not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT_PATH)
+
+
+db_engine: Engine = create_engine_sqlmodel(
     settings.DATABASE_URL,
-    echo=True,  # Log các câu query SQL
-    pool_pre_ping=True,  # Kiểm tra kết nối trước khi sử dụng
-    pool_size=5,         # Số lượng kết nối trong pool
-    max_overflow=10      # Số lượng kết nối tối đa có thể tạo thêm
+    echo=True,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10
 )
 
-# Context manager để quản lý session
 @contextmanager
-def get_session() -> Generator[Session, None, None]:
-    session = Session(engine)
+def get_session(engine_to_use: Engine = db_engine) -> Generator[Session, None, None]:
+    session = Session(engine_to_use)
     try:
         yield session
         session.commit()
@@ -30,47 +38,19 @@ def get_session() -> Generator[Session, None, None]:
     finally:
         session.close()
 
-# Hàm helper để thêm nhiều bản ghi
 def bulk_create(session: Session, objects: list[SQLModel]) -> None:
     try:
-        session.add_all(objects)
-        session.commit()
+        session.add_all(objects)  
+        # session.commit()   (Commit sẽ được xử lý bởi get_session context manager)
     except Exception as e:
-        session.rollback()
+        # session.rollback()   (Rollback sẽ được xử lý bởi get_session context manager)
         logging.error(f"Bulk create error: {str(e)}")
         raise
 
-# Hàm helper để cập nhật nhiều bản ghi
-def bulk_update(session: Session, objects: list[SQLModel]) -> None:
-    try:
-        for obj in objects:
-            session.add(obj)
-        session.commit()
-    except Exception as e:
-        session.rollback()
-        logging.error(f"Bulk update error: {str(e)}")
-        raise
-
-# Hàm helper để xóa nhiều bản ghi
-def bulk_delete(session: Session, objects: list[SQLModel]) -> None:
-    try:
-        for obj in objects:
-            session.delete(obj)
-        session.commit()
-    except Exception as e:
-        session.rollback()
-        logging.error(f"Bulk delete error: {str(e)}")
-        raise
-
-
 def get_partition_name(date: datetime) -> str:
     return f"brand_{date.strftime('%Y_%m')}"
 
-# Đảm bảo rằng partition tương ứng với ngày đã tồn tại, nếu chưa thì tạo
-def get_partition_name(date: datetime) -> str:
-    return f"brand_{date.strftime('%Y_%m')}"
-
-def ensure_partition_exists(date: datetime) -> None:
+def ensure_partition_exists(date: datetime,engine_to_use: Engine = db_engine) -> None:
     partition_name = get_partition_name(date)
     start_date = date.replace(day=1)
     end_date = (start_date + timedelta(days=32)).replace(day=1)
@@ -92,13 +72,21 @@ def ensure_partition_exists(date: datetime) -> None:
     """)
 
     try:
-        with engine.begin() as conn:
-            exists = conn.execute(check_query, {"table_name": partition_name}).scalar()
-            if exists:
-                logging.debug(f"✅ Partition '{partition_name}' đã tồn tại, không cần tạo lại.")
-            else:
-                conn.execute(create_query)
-                logging.info(f"📦 Đã tạo partition mới: '{partition_name}'")
+        with engine_to_use.connect() as conn:
+            trans = conn.begin()  
+            try:  
+                exists_result = conn.execute(check_query, {"table_name": partition_name})  
+                exists = exists_result.scalar_one_or_none()  
+                if exists:  
+                    logging.debug(f"✅ Partition '{partition_name}' đã tồn tại, không cần tạo lại.")  
+                else:  
+                    conn.execute(create_query)  
+                    logging.info(f"📦 Đã tạo partition mới: '{partition_name}'")  
+                trans.commit()  
+            except Exception as e_inner:  
+                trans.rollback()  
+                logging.error(f"❌ Lỗi bên trong transaction khi kiểm tra/tạo partition '{partition_name}': {str(e_inner)}")  
+                raise  
     except Exception as e:
-        logging.error(f"❌ Lỗi khi kiểm tra/tạo partition '{partition_name}': {str(e)}")
-        raise
+        logging.error(f"❌ Lỗi khi kiểm tra/tạo partition '{partition_name}': {str(e)}")  
+        raise  
