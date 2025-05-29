@@ -16,8 +16,6 @@ import logging
 
 
 
-
-
 class ScraperService:
     def __init__(self, media_dir: str):    
         self.media_dir = media_dir    
@@ -32,7 +30,7 @@ class ScraperService:
             "DNT": "1",
             "Upgrade-Insecure-Requests": "1"
         }
-        # self.project_root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))    (Không cần nếu media_dir đã đầy đủ)
+
 
     def get_next_proxy(self) -> Optional[str]:
         if not settings.PROXY_IPS or not settings.PROXY_PORTS:
@@ -63,7 +61,7 @@ class ScraperService:
             logging.warning("download_image gọi với một link ảnh gốc rỗng.")
             return None
 
-        # full_save_folder_on_disk = os.path.join(self.project_root_dir, base_save_path_on_disk, image_subfolder)    (Sử dụng self.media_dir)
+
         full_save_folder_on_disk = self.media_dir    
 
         try:

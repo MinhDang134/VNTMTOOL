@@ -1,3 +1,5 @@
+import os
+import sys
 from datetime import datetime, timedelta
 from sqlmodel import SQLModel, Session, create_engine as create_engine_sqlmodel
 from contextlib import contextmanager
@@ -5,14 +7,23 @@ from typing import Generator
 from src.tools.config import settings
 import logging
 from sqlalchemy import text , Engine
+
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+SRC_DIR_PATH = os.path.dirname(SCRIPT_DIR)
+PROJECT_ROOT_PATH = os.path.dirname(SRC_DIR_PATH)
+
+if PROJECT_ROOT_PATH not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT_PATH)
+
+
 db_engine: Engine = create_engine_sqlmodel(
     settings.DATABASE_URL,
-    echo=True, # Có thể tắt echo=True trong production
+    echo=True,
     pool_pre_ping=True,
     pool_size=5,
     max_overflow=10
 )
-# engine = create_engine(settings.DATABASE_URL,echo=True,pool_pre_ping=True,pool_size=5,max_overflow=10)   (Dòng này sẽ được comment hoặc xóa)
 
 @contextmanager
 def get_session(engine_to_use: Engine = db_engine) -> Generator[Session, None, None]:
