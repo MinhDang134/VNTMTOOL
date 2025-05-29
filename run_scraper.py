@@ -15,14 +15,39 @@ from src.tools.state_manager import (
 )
 import logging   
 
-logging.basicConfig(   
-    level=logging.INFO,   
-    format='%(asctime)s - %(processName)s (%(process)d) - %(name)s - %(levelname)s - %(message)s',   
-    handlers=[   
-        logging.FileHandler("scraper_activity.log", mode='a', encoding='utf-8'),   
-        logging.StreamHandler()   
-    ]   
-)   
+LOG_OUTPUT_DIR = "/home/minhdangpy134/Logvntmtool"
+LOG_FILENAME_BASE = "scraper_activity.txt"
+LOG_FILE_PATH_BASE = os.path.join(LOG_OUTPUT_DIR, LOG_FILENAME_BASE)
+
+try:
+    os.makedirs(LOG_OUTPUT_DIR, exist_ok=True)
+except OSError as e:
+    print(f"Lỗi khi tạo thư mục log {LOG_OUTPUT_DIR}: {e}")
+
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+for handler in logger.handlers[:]:
+    logger.removeHandler(handler)
+
+log_formatter = logging.Formatter(
+    '%(asctime)s - %(processName)s (%(process)d) - %(name)s - %(levelname)s - %(message)s'
+)
+
+file_handler = logging.handlers.TimedRotatingFileHandler(
+    filename=LOG_FILE_PATH_BASE,
+    when='midnight',
+    interval=1,
+    backupCount=3,
+    encoding='utf-8'
+)
+file_handler.setFormatter(log_formatter)
+logger.addHandler(file_handler)
+
+stream_handler = logging.StreamHandler()
+stream_handler.setFormatter(log_formatter)
+logger.addHandler(stream_handler)
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 MEDIA_PHYSICAL_DIR = os.path.join(PROJECT_ROOT, "media_root", "brand_images")
