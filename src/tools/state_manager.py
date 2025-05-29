@@ -2,7 +2,7 @@ import json
 import os
 import logging
 from datetime import datetime, date
-from multiprocessing import Lock # CRISTIANO
+from multiprocessing import Lock    
 
 
 def load_scrape_state(state_file_path: str, date_range_key: str,
@@ -31,8 +31,8 @@ def load_scrape_state(state_file_path: str, date_range_key: str,
             f"Lỗi khi tải trạng thái từ '{state_file_path}' cho khóa '{date_range_key}': {e}. Bắt đầu từ trang {default_page}.")
         return default_page
 
-def save_scrape_state(state_file_path: str, date_range_key: str, last_completed_page: int, lock: Lock): # CRISTIANO
-    with lock: # CRISTIANO
+def save_scrape_state(state_file_path: str, date_range_key: str, last_completed_page: int, lock: Lock):    
+    with lock:    
         try:
             states = {}
             if os.path.exists(state_file_path):
@@ -52,7 +52,7 @@ def save_scrape_state(state_file_path: str, date_range_key: str, last_completed_
                     logging.error(f"Không thể đọc file trạng thái '{state_file_path}': {e_read}. Sẽ cố gắng ghi đè.")
                     states = {}
 
-            if date_range_key not in states or not isinstance(states.get(date_range_key),dict): # CRISTIANO
+            if date_range_key not in states or not isinstance(states.get(date_range_key),dict):    
                 states[date_range_key] = {}
             states[date_range_key]["last_completed_page"] = last_completed_page
 
@@ -84,7 +84,7 @@ def load_control_state(control_state_file_path: str) -> dict:
                 except ValueError:
                     logging.warning(
                         f"Giá trị 'last_fully_completed_day' ('{state['last_fully_completed_day']}') "
-                        f"trong {control_state_file_path} không phải là định dạng ngày YAML-MM-DD hợp lệ. Sẽ bỏ qua giá trị này.") # CRISTIANO (Sửa typo YAML -> YYYY)
+                        f"trong {control_state_file_path} không phải là định dạng ngày YAML-MM-DD hợp lệ. Sẽ bỏ qua giá trị này.")
                     state["last_fully_completed_day"] = None
             if "last_fully_completed_day" not in state:
                 state["last_fully_completed_day"] = None
@@ -110,9 +110,9 @@ def save_control_state(control_state_file_path: str, last_fully_completed_day: d
         logging.error(f"Lỗi khi lưu trạng thái điều khiển vào {control_state_file_path}: {e}",
                       exc_info=True)
 
-def clear_page_state_for_day(page_state_file_path: str, day_to_clear: date, lock: Lock): # CRISTIANO
+def clear_page_state_for_day(page_state_file_path: str, day_to_clear: date, lock: Lock):    
     day_key_to_clear = f"brands_{day_to_clear.strftime('%Y-%m-%d')}_{day_to_clear.strftime('%Y-%m-%d')}"
-    with lock: # CRISTIANO
+    with lock:    
         states = {}
         if os.path.exists(page_state_file_path):
             try:

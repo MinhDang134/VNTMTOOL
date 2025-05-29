@@ -2,26 +2,25 @@ import os
 import uuid
 from urllib.parse import urlparse, unquote
 import httpx
-from typing import List, Optional, Callable, Dict, Any  # CRISTIANO
+from typing import List, Optional, Callable, Dict, Any    
 from datetime import datetime, timezone, date as date_type
 from bs4 import BeautifulSoup
-# from datetime import datetime, timezone # CRISTIANO (Đã có ở trên)
+# from datetime import datetime, timezone    (Đã có ở trên)
 import asyncio
 from src.tools.models import Brand
 from src.tools.config import settings
-from sqlmodel import Session, select  # CRISTIANO (Đảm bảo Session và select từ sqlmodel)
-from src.tools.database import bulk_create  # CRISTIANO (ensure_partition_exists sẽ không được gọi từ đây nữa)
+from sqlmodel import Session, select
+from src.tools.database import bulk_create
 import random
-import logging  # CRISTIANO (Sử dụng logging chuẩn)
+import logging
 
 
-# CRISTIANO (Các hằng số này không cần thiết nếu settings được dùng trực tiếp hoặc truyền qua init)
-# LOCAL_MEDIA_BASE_URL = settings.LOCAL_MEDIA_BASE_URL
-# SOURCE_WEBSITE_DOMAIN = settings.SOURCE_WEBSITE_DOMAIN
+
+
 
 class ScraperService:
-    def __init__(self, media_dir: str):  # CRISTIANO
-        self.media_dir = media_dir  # CRISTIANO
+    def __init__(self, media_dir: str):    
+        self.media_dir = media_dir    
         self.proxy_index = 0
         self.request_count = 0
         self.last_request_time = datetime.now()
@@ -33,7 +32,7 @@ class ScraperService:
             "DNT": "1",
             "Upgrade-Insecure-Requests": "1"
         }
-        # self.project_root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")) # CRISTIANO (Không cần nếu media_dir đã đầy đủ)
+        # self.project_root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))    (Không cần nếu media_dir đã đầy đủ)
 
     def get_next_proxy(self) -> Optional[str]:
         if not settings.PROXY_IPS or not settings.PROXY_PORTS:
@@ -59,18 +58,18 @@ class ScraperService:
         return proxy_str
 
     async def download_image(self,
-                             image_url_original: str) -> str | None:  # CRISTIANO (Bỏ các tham số đường dẫn mặc định)
+                             image_url_original: str) -> str | None:
         if not image_url_original:
-            logging.warning("download_image gọi với một link ảnh gốc rỗng.")  # CRISTIANO (Sửa lỗi chính tả)
+            logging.warning("download_image gọi với một link ảnh gốc rỗng.")
             return None
 
-        # full_save_folder_on_disk = os.path.join(self.project_root_dir, base_save_path_on_disk, image_subfolder) # CRISTIANO (Sử dụng self.media_dir)
-        full_save_folder_on_disk = self.media_dir  # CRISTIANO
+        # full_save_folder_on_disk = os.path.join(self.project_root_dir, base_save_path_on_disk, image_subfolder)    (Sử dụng self.media_dir)
+        full_save_folder_on_disk = self.media_dir    
 
         try:
             os.makedirs(full_save_folder_on_disk, exist_ok=True)
         except OSError as e:
-            logging.error(f"không thể tạo một thư mục  {full_save_folder_on_disk}: {e}")  # CRISTIANO (Sửa lỗi chính tả)
+            logging.error(f"không thể tạo một thư mục  {full_save_folder_on_disk}: {e}")
             return None
 
         try:
@@ -124,30 +123,9 @@ class ScraperService:
                 with open(save_path_on_disk, "wb") as f:
                     f.write(img_response.content)
 
-                # Đường dẫn tương đối bây giờ chỉ là tên file, vì image_subfolder đã là một phần của self.media_dir (nếu cấu trúc là vậy)
-                # Hoặc nếu self.media_dir là media_root/brand_images, thì unique_filename là đủ
-                # Để nhất quán với main.py, worker truyền MEDIA_PHYSICAL_DIR (PROJECT_ROOT/media_root/brand_images)
-                # Và LOCAL_MEDIA_BASE_URL/image_subfolder/unique_filename được dùng để tạo URL DB
-                # Vậy hàm này nên trả về phần sau image_subfolder, tức là chỉ unique_filename
-                # relative_url_path = os.path.join(image_subfolder, unique_filename).replace("\\", "/") # CRISTIANO (Điều chỉnh logic này)
-                # Giả sử LOCAL_MEDIA_BASE_URL/brand_images/unique_filename, thì hàm này chỉ cần trả về unique_filename
-                # nếu image_subfolder ("brand_images") đã được xử lý ở nơi khác khi tạo URL đầy đủ.
-
-                # Theo logic của file main.py đã sửa, thì `LOCAL_MEDIA_BASE_URL/{image_subfolder}/{returned_path}`
-                # Nếu `download_image` lưu vào `media_dir/unique_filename` (media_dir là `.../brand_images`)
-                # thì `returned_path` chỉ cần là `unique_filename`.
-                # Nhưng URL trong DB lại là `settings.LOCAL_MEDIA_BASE_URL.rstrip('/') + '/' + image_subfolder + '/' + unique_filename` (nếu `image_subfolder` là `brand_images`)
-                # Vậy `saved_relative_image_path` mà hàm này trả về nên là `image_subfolder/unique_filename`
-                # Điều này có nghĩa là `LOCAL_MEDIA_BASE_URL` không nên chứa `image_subfolder`.
-                # Hãy giả định rằng `settings.LOCAL_MEDIA_BASE_URL` là `http://localhost:8000/media`
-                # và chúng ta muốn URL cuối cùng là `http://localhost:8000/media/brand_images/filename.jpg`
-                # `self.media_dir` là `PROJECT_ROOT/media_root/brand_images`
-                # File được lưu tại `self.media_dir/unique_filename`
-                # Hàm này cần trả về `brand_images/unique_filename`
-
                 # Lấy tên của thư mục con cuối cùng từ self.media_dir
-                image_subfolder_name = os.path.basename(self.media_dir)  # CRISTIANO
-                relative_url_path = os.path.join(image_subfolder_name, unique_filename).replace("\\", "/")  # CRISTIANO
+                image_subfolder_name = os.path.basename(self.media_dir)    
+                relative_url_path = os.path.join(image_subfolder_name, unique_filename).replace("\\", "/")    
 
                 logging.info(
                     f"Hình ảnh đã được tải xuống thành công: {save_path_on_disk}. Phần URL tương đối: {relative_url_path}")
@@ -217,12 +195,12 @@ class ScraperService:
                     f"Thử lại lần cuối thất bại cho {url} với lỗi {status_code}."); return None
                 await asyncio.sleep(random.uniform(2, 5))
 
-            except httpx.RequestError as e_req:  # CRISTIANO (Sửa lỗi chính tả "equestError")
+            except httpx.RequestError as e_req:
                 logging.warning(
                     f"Yêu cầu Lỗi (Cố gắng {attempt + 1}/{effective_max_retries}) for {url}: {str(e_req)}")
                 current_proxy = self.get_next_proxy()
                 proxies_config = {"http://": current_proxy,
-                                  "https": current_proxy} if current_proxy else None  # CRISTIANO (Sửa "https" -> "https://")
+                                  "https": current_proxy} if current_proxy else None
                 if attempt == effective_max_retries - 1: logging.error(
                     f"Thử lại lần cuối thất bại cho {url} với lỗi request: {str(e_req)}."); return None
                 await asyncio.sleep(random.uniform(3, 7))
@@ -232,15 +210,13 @@ class ScraperService:
                     f"Lỗi chung (Cố gắng {attempt + 1}/{effective_max_retries}) for {url}: {str(e_generic)}",
                     exc_info=True)
                 if attempt == effective_max_retries - 1: logging.error(
-                    # CRISTIANO (Sửa lỗi tham chiếu e_req -> e_generic)
+
                     f"Thử lại lần cuối thất bại cho {url} với lỗi chung: {str(e_generic)}."); return None
                 await asyncio.sleep(random.uniform(2, 5))
         logging.error(f"All {effective_max_retries} thử lại không thành công cho URL: {url}")
         return None
 
-    async def scrape_by_date_range(self, start_date: date_type, end_date: date_type, session: Session,
-                                   initial_start_page: int, state_save_callback: Callable[[int], None]) -> Dict[
-        str, Any]:
+    async def scrape_by_date_range(self, start_date: date_type, end_date: date_type, session: Session,initial_start_page: int, state_save_callback: Callable[[int], None]) -> Dict[str, Any]:
         current_page = initial_start_page
         brands_collected_in_this_run: List[Brand] = []
         request_limit_per_interval = settings.REQUEST_LIMIT_PER_INTERVAL
@@ -339,21 +315,21 @@ class ScraperService:
                             f"nằm ngoài khoảng đang scrape ({start_date.strftime('%Y-%m-%d')} - {end_date.strftime('%Y-%m-%d')}). Bỏ qua.")
                         continue
 
-                    # ensure_partition_exists(parsed_application_date) # CRISTIANO (Đã được chuyển ra ngoài worker function trong main.py)
+                    # ensure_partition_exists(parsed_application_date)    (Đã được chuyển ra ngoài worker function trong main.py)
 
                     brand_name_tag = row.select_one("td:nth-child(4) label")
                     brand_name = brand_name_tag.text.strip() if brand_name_tag else ""
 
                     image_tag = row.select_one("td.mau-nhan img")
                     image_url_original_src = image_tag["src"] if image_tag and image_tag.has_attr("src") else None
-                    final_image_url_for_db = None  # CRISTIANO (Khởi tạo là None)
+                    final_image_url_for_db = None
                     if image_url_original_src:
                         current_image_url_to_download = image_url_original_src
                         if current_image_url_to_download.startswith("/"):
-                            current_image_url_to_download = f"{settings.SOURCE_WEBSITE_DOMAIN.rstrip('/')}{current_image_url_to_download}"  # CRISTIANO
+                            current_image_url_to_download = f"{settings.SOURCE_WEBSITE_DOMAIN.rstrip('/')}{current_image_url_to_download}"    
                         saved_relative_image_path = await self.download_image(current_image_url_to_download)
                         if saved_relative_image_path:
-                            final_image_url_for_db = f"{settings.LOCAL_MEDIA_BASE_URL.rstrip('/')}/{saved_relative_image_path.lstrip('/')}"  # CRISTIANO
+                            final_image_url_for_db = f"{settings.LOCAL_MEDIA_BASE_URL.rstrip('/')}/{saved_relative_image_path.lstrip('/')}"    
 
                     product_group_tags = row.select("td:nth-child(5) span")
                     if product_group_tags:
@@ -400,7 +376,7 @@ class ScraperService:
                         applicant=applicant,
                         representative=representative,
                         product_detail=f"{settings.SOURCE_WEBSITE_DOMAIN.rstrip('/')}{product_detail_href}" if product_detail_href else ""
-                        # CRISTIANO (Thêm domain)
+
 
                     )
                     brands_extracted_from_this_page.append(brand_obj)
