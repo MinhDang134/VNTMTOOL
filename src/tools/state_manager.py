@@ -5,8 +5,7 @@ from datetime import datetime, date
 from multiprocessing import Lock    
 
 
-def load_scrape_state(state_file_path: str, date_range_key: str,
-                      default_page: int = 1) -> int:
+def load_scrape_state(state_file_path: str, date_range_key: str,default_page: int = 1) -> int:
     try:
         if not os.path.exists(state_file_path):
             logging.info(
