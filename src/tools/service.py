@@ -3,13 +3,13 @@ import uuid
 from urllib.parse import urlparse, unquote
 import httpx
 from typing import List, Optional, Callable, Dict, Any    
-from datetime import datetime, timezone, date as date_type
+from datetime import datetime, timezone, date as date_type, timedelta
 from bs4 import BeautifulSoup
 # from datetime import datetime, timezone    (Đã có ở trên)
 import asyncio
 from src.tools.models import Brand
 from src.tools.config import settings
-from sqlmodel import Session, select
+from sqlmodel import Session, select, or_, and_
 from src.tools.database import bulk_create
 import random
 import logging
@@ -439,9 +439,16 @@ class ScraperService:
     async def check_pending_brands(self, session: Session):
         logger = logging.getLogger(f"{self.__class__.__name__}.check_pending_brands")
         logger.info("Bắt đầu kiểm tra các đơn có trạng thái 'Đang giải quyết'...")
+        one_month_ago = datetime.now(timezone.utc) - timedelta(days=30)
         statement = select(Brand).where(
             Brand.status == "Đang giải quyết",
-            Brand.va_count >= 5
+            or_(
+                Brand.va_count >= 5,
+                and_(
+                    Brand.va_count < 5,
+                    Brand.updated_at < one_month_ago
+                )
+            )
         )
         pending_brands: List[Brand] = session.exec(statement).all()
 
