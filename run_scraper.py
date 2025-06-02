@@ -14,15 +14,30 @@ from src.tools.state_manager import (
     clear_page_state_for_day
 )
 import logging   
+# Đường dẫn tuyệt đối bạn muốn lưu log
+LOG_OUTPUT_DIR_PATH = "/home/minhdangpy134/Logvntmtool"
 
-logging.basicConfig(   
-    level=logging.INFO,   
-    format='%(asctime)s - %(processName)s (%(process)d) - %(name)s - %(levelname)s - %(message)s',   
-    handlers=[   
-        logging.FileHandler("scraper_activity.log", mode='a', encoding='utf-8'),   
-        logging.StreamHandler()   
-    ]   
-)   
+
+try:
+    os.makedirs(LOG_OUTPUT_DIR_PATH, exist_ok=True)
+except OSError as e:
+    print(f"Lỗi khi tạo thư mục log {LOG_OUTPUT_DIR_PATH}: {e}")
+
+
+
+LOG_FILE_NAME = "scraper_activity2.txt"
+LOG_FILE_PATH = os.path.join(LOG_OUTPUT_DIR_PATH, LOG_FILE_NAME)
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(processName)s (%(process)d) - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_FILE_PATH, mode='a', encoding='utf-8'),
+        logging.StreamHandler()
+    ]
+)
+
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 MEDIA_PHYSICAL_DIR = os.path.join(PROJECT_ROOT, "media_root", "brand_images")
