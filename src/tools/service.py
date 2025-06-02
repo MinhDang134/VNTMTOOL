@@ -439,7 +439,10 @@ class ScraperService:
     async def check_pending_brands(self, session: Session):
         logger = logging.getLogger(f"{self.__class__.__name__}.check_pending_brands")
         logger.info("Bắt đầu kiểm tra các đơn có trạng thái 'Đang giải quyết'...")
-        statement = select(Brand).where(Brand.status == "Đang giải quyết")
+        statement = select(Brand).where(
+            Brand.status == "Đang giải quyết",
+            Brand.va_count >= 5
+        )
         pending_brands: List[Brand] = session.exec(statement).all()
 
         if not pending_brands:
