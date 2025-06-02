@@ -2,7 +2,8 @@
 from datetime import date, datetime
 from typing import Optional
 from sqlmodel import SQLModel, Field
-from sqlalchemy import Column, Date
+from sqlalchemy import Column, Date, Integer
+
 
 class Brand(SQLModel, table=True):
     __tablename__ = "brand"
@@ -16,5 +17,6 @@ class Brand(SQLModel, table=True):
     applicant: str
     representative: str
     product_detail: str
+    va_count: int = Field(default=0, sa_column=Column(Integer, nullable=False, default=0, server_default="0"))
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

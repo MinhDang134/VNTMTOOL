@@ -14,7 +14,7 @@ from src.tools.database import bulk_create
 import random
 import logging
 
-
+logger_service = logging.getLogger(__name__)
 
 class ScraperService:
     def __init__(self, media_dir: str):    
@@ -55,8 +55,7 @@ class ScraperService:
         logging.debug(f"dùng proxy số : {proxy_ip}:{proxy_port}")
         return proxy_str
 
-    async def download_image(self,
-                             image_url_original: str) -> str | None:
+    async def download_image(self,image_url_original: str) -> str | None:
         if not image_url_original:
             logging.warning("download_image gọi với một link ảnh gốc rỗng.")
             return None
@@ -547,3 +546,33 @@ class ScraperService:
             logger.info("✅ Không có trạng thái đơn nào cần cập nhật sau khi kiểm tra toàn bộ danh sách.")
 
         logger.info(f"Hoàn tất kiểm tra. Đã xử lý {processed_count} đơn, cập nhật {updated_count} đơn.")
+
+
+    async def increment_brand_search_count(self, session: Session, brand_name: str) -> bool:
+        logger_service.info(f"📈 Yêu cầu tăng va_count cho nhãn hiệu: '{brand_name}'")
+        if not brand_name:
+            logger_service.warning("⚠️ Tên nhãn hiệu rỗng, không thể tăng va_count.")
+            return False
+
+        try:
+            statement = select(Brand).where(Brand.brand_name == brand_name)
+            brand_to_update = session.exec(statement).first()
+
+            if brand_to_update:
+                logger_service.info(
+                    f"🔍 Tìm thấy nhãn hiệu: ID {brand_to_update.id}, Tên: {brand_to_update.brand_name}, va_count hiện tại: {brand_to_update.va_count}")
+                brand_to_update.va_count += 1
+                brand_to_update.updated_at = datetime.now(timezone.utc)
+                session.add(brand_to_update)
+                session.commit()
+                session.refresh(brand_to_update)
+                logger_service.info(f"✅ Đã tăng va_count cho '{brand_name}' thành {brand_to_update.va_count}.")
+                return True
+            else:
+                logger_service.warning(
+                    f"🤷 Không tìm thấy nhãn hiệu '{brand_name}' trong cơ sở dữ liệu để tăng va_count.")
+                return False
+        except Exception as e:
+            logger_service.error(f"❌ Lỗi khi tăng va_count cho '{brand_name}': {e}", exc_info=True)
+            session.rollback()  # Rollback nếu có lỗi xảy ra
+            return False
