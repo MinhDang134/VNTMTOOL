@@ -32,36 +32,48 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
-async def handle_ai_brand_search_and_update_count(brand_name_from_ai: str):
 
-    ai_logger.info(f"🤖 AI Handler: Nhận yêu cầu tìm và cập nhật count cho nhãn hiệu: '{brand_name_from_ai}'")
+
+async def handle_ai_brand_search_and_update_count(brand_name_from_ai: str):
+    ai_logger.info(
+        f"🤖 AI Handler: Nhận yêu cầu tìm, cập nhật count và lấy thông tin cho nhãn hiệu: '{brand_name_from_ai}'")
 
     if not brand_name_from_ai:
         ai_logger.warning("🤖 AI Handler: Tên nhãn hiệu rỗng, không xử lý.")
-        return {"status": "error", "message": "Brand name is empty"}
-    scraper = ScraperService(media_dir=MEDIA_PHYSICAL_DIR)# lấy vị trí scraperService
+        return {"status": "error", "message": "Brand name is empty", "data": []}
 
+    scraper = ScraperService(media_dir=MEDIA_PHYSICAL_DIR)
 
     ai_handler_engine = None
     try:
-        ai_handler_engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True,echo=False)
-        with get_session(ai_handler_engine) as session:  # Lấy session từ engine này
+        ai_handler_engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True, echo=False)
+        with get_session(ai_handler_engine) as session:
             ai_logger.info(f"🤖 AI Handler: Đang gọi increment_brand_search_count cho '{brand_name_from_ai}'...")
-            success = await scraper.increment_brand_search_count(session=session, brand_name=brand_name_from_ai)
 
-            if success:
-                ai_logger.info(f"✅ AI Handler: Cập nhật va_count thành công cho '{brand_name_from_ai}'.")
-                return {"status": "success", "message": f"va_count updated for {brand_name_from_ai}.",
-                        "updated_count_for": brand_name_from_ai}
+            list_of_brand_details = await scraper.increment_brand_search_count(session=session,
+                                                                               brand_name=brand_name_from_ai)
+
+            if list_of_brand_details:
+                ai_logger.info(
+                    f"✅ AI Handler: Cập nhật va_count và lấy thông tin thành công cho '{brand_name_from_ai}'. Số lượng bản ghi: {len(list_of_brand_details)}")
+                return {
+                    "status": "success",
+                    "message": f"va_count updated and data retrieved for '{brand_name_from_ai}'.",
+                    "updated_count_for": brand_name_from_ai,
+                    "data": list_of_brand_details
+                }
             else:
                 ai_logger.warning(
-                    f"⚠️ AI Handler: Không thể cập nhật va_count cho '{brand_name_from_ai}' (có thể không tìm thấy hoặc lỗi).")
-                return {"status": "not_found_or_error",
-                        "message": f"Could not update va_count for {brand_name_from_ai}."}
+                    f"⚠️ AI Handler: Không tìm thấy nhãn hiệu '{brand_name_from_ai}' để cập nhật va_count hoặc có lỗi xảy ra trong service.")
+                return {
+                    "status": "not_found",
+                    "message": f"No brand found with name '{brand_name_from_ai}' or internal error during update/fetch.",
+                    "data": []
+                }
 
     except Exception as e:
         ai_logger.error(f"❌ AI Handler: Lỗi nghiêm trọng khi xử lý cho '{brand_name_from_ai}': {e}", exc_info=True)
-        return {"status": "error", "message": f"Internal server error: {str(e)}"}
+        return {"status": "error", "message": f"Internal server error: {str(e)}", "data": []}
     finally:
         if ai_handler_engine:
             ai_handler_engine.dispose()
@@ -70,18 +82,15 @@ async def handle_ai_brand_search_and_update_count(brand_name_from_ai: str):
 
 
 async def example_ai_trigger():
-
-    brand_to_search = "soft time"
-    result = await handle_ai_brand_search_and_update_count(brand_to_search) # truyền ronaldo vào
-    print(f"Kết quả từ AI Handler cho '{brand_to_search}': {result}")
-
-    brand_to_search_2 = "soft me"
-    result_2 = await handle_ai_brand_search_and_update_count(brand_to_search_2)
-    print(f"Kết quả từ AI Handler cho '{brand_to_search_2}': {result_2}")
-
-    brand_to_search_3 = "soft it"
-    result_3 = await handle_ai_brand_search_and_update_count(brand_to_search_3)
-    print(f"Kết quả từ AI Handler cho '{brand_to_search_3}': {result_3}")
+    brand_to_search = "FreeClip"
+    result = await handle_ai_brand_search_and_update_count(brand_to_search)
+    ai_logger.info(f"Kết quả từ AI Handler cho '{brand_to_search}':")
+    if result.get('data'):
+        ai_logger.info(f"  Data (số lượng: {len(result.get('data'))}):")
+        for idx, brand_item in enumerate(result.get('data')):
+            ai_logger.info(f"    Item {idx + 1}: {brand_item}")
+    else:
+        ai_logger.info(f"  Data: []")
 
 
 if __name__ == "__main__":

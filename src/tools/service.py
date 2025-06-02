@@ -547,32 +547,41 @@ class ScraperService:
 
         logger.info(f"Hoàn tất kiểm tra. Đã xử lý {processed_count} đơn, cập nhật {updated_count} đơn.")
 
+    async def increment_brand_search_count(self, session: Session, brand_name: str) -> List[Dict[str, Any]]:
+        logger_service.info(f"📈 Yêu cầu tăng va_count và lấy thông tin cho nhãn hiệu: '{brand_name}'")
+        brands_info_to_return: List[Dict[str, Any]] = []
 
-    async def increment_brand_search_count(self, session: Session, brand_name: str) -> bool:
-        logger_service.info(f"📈 Yêu cầu tăng va_count cho nhãn hiệu: '{brand_name}'")
         if not brand_name:
-            logger_service.warning("⚠️ Tên nhãn hiệu rỗng, không thể tăng va_count.")
-            return False
+            logger_service.warning("⚠️ Tên nhãn hiệu rỗng, không thể xử lý.")
+            return brands_info_to_return
 
         try:
             statement = select(Brand).where(Brand.brand_name == brand_name)
-            brand_to_update = session.exec(statement).first()
+            brands_to_update = session.exec(statement).all()
 
-            if brand_to_update:
-                logger_service.info(
-                    f"🔍 Tìm thấy nhãn hiệu: ID {brand_to_update.id}, Tên: {brand_to_update.brand_name}, va_count hiện tại: {brand_to_update.va_count}")
-                brand_to_update.va_count += 1
-                brand_to_update.updated_at = datetime.now(timezone.utc)
-                session.add(brand_to_update)
+            if brands_to_update:
+                updated_count_for_log = 0
+                for brand_obj in brands_to_update:
+                    logger_service.debug(
+                        f"🔍 Xử lý nhãn hiệu: ID {brand_obj.id}, Tên: {brand_obj.brand_name}, va_count hiện tại: {brand_obj.va_count}")
+
+                    brand_obj.va_count = (brand_obj.va_count or 0) + 1
+                    brand_obj.updated_at = datetime.now(timezone.utc)
+                    session.add(brand_obj)
+                    updated_count_for_log += 1
+
+                    brand_info = brand_obj.model_dump(exclude={'va_count', 'created_at', 'updated_at'})
+                    brands_info_to_return.append(brand_info)
+
                 session.commit()
-                session.refresh(brand_to_update)
-                logger_service.info(f"✅ Đã tăng va_count cho '{brand_name}' thành {brand_to_update.va_count}.")
-                return True
+
+                logger_service.info(f"✅ Đã tăng va_count cho {updated_count_for_log} bản ghi khớp với '{brand_name}'.")
+                return brands_info_to_return
             else:
                 logger_service.warning(
-                    f"🤷 Không tìm thấy nhãn hiệu '{brand_name}' trong cơ sở dữ liệu để tăng va_count.")
-                return False
+                    f"🤷 Không tìm thấy nhãn hiệu '{brand_name}' trong cơ sở dữ liệu.")
+                return brands_info_to_return
         except Exception as e:
-            logger_service.error(f"❌ Lỗi khi tăng va_count cho '{brand_name}': {e}", exc_info=True)
-            session.rollback()  # Rollback nếu có lỗi xảy ra
-            return False
+            logger_service.error(f"❌ Lỗi khi tăng va_count và lấy thông tin cho '{brand_name}': {e}", exc_info=True)
+            session.rollback()
+            return []
