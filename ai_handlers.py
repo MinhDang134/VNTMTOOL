@@ -82,7 +82,7 @@ async def handle_ai_brand_search_and_update_count(brand_name_from_ai: str):
 
 
 async def example_ai_trigger():
-    brand_to_search = "MILEMAX"
+    brand_to_search = "Bemori"
     result = await handle_ai_brand_search_and_update_count(brand_to_search)
     ai_logger.info(f"Kết quả từ AI Handler cho '{brand_to_search}':")
     if result.get('data'):
