@@ -163,7 +163,7 @@ class ScraperService:
                         timeout=httpx.Timeout(settings.REQUEST_TIMEOUT),
                         verify=settings.SSL_VERIFY_REQUEST,
                         follow_redirects=True,
-                        proxies=proxies_config
+                        # proxies=proxies_config
                 ) as client:
                     logging.debug(
                         f"Making request to {url} (Attempt {attempt + 1}/{effective_max_retries}) with proxy {current_proxy or 'None'}")

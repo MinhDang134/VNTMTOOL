@@ -7,7 +7,7 @@ from functools import partial
 from sqlmodel import create_engine   
 from src.tools.config import settings
 from src.tools.service import ScraperService
-from src.tools.database import get_session, ensure_partition_exists   
+from src.tools.database import get_session, ensure_partition_exists, setup_database_schema
 from src.tools.state_manager import (
     load_scrape_state, save_scrape_state,
     load_control_state, save_control_state, get_control_state_path,
@@ -284,7 +284,13 @@ async def daily_scraping_manager():
                 logging.info(
                     f"====== KẾT THÚC NGHỈ NGƠI lúc {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ======")   
 
-                current_day_to_process = get_next_day_to_process()   
+                current_day_to_process = get_next_day_to_process()
+
+try:
+    setup_database_schema()
+except Exception as e_db_setup:
+    logging.critical(f"Không thể thiết lập schema database, dừng ứng dụng: {e_db_setup}")
+    exit(1) # Dừng hẳn nếu không thể setup DB
 
 
 async def main_async_runner():   

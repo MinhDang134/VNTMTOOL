@@ -5,23 +5,20 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: vntmtool_app # Đặt tên container cho dễ quản lý
+    container_name: vntmtool_app
     env_file:
-      - .env # Nạp biến môi trường từ file .env
-    volumes:
+      - .env
 
+    volumes:
       - ./media_root:/app/media_root
       - ./logs:/app/logs
       - ./scraper_control_state.json:/app/scraper_control_state.json
       - ./scraper_page_state.json:/app/scraper_page_state.json
-
-
     depends_on:
-      db: # Ứng dụng phụ thuộc vào database
-        condition: service_healthy # Chờ database sẵn sàng (cần healthcheck trong service db)
+      db:
+        condition: service_healthy
     networks:
       - vntmtool_network
-    # Lệnh chạy mặc định sẽ được kế thừa từ CMD trong Dockerfile
     restart: unless-stopped
 
   db:
@@ -34,10 +31,10 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5433:5432" # Map cổng để có thể truy cập DB từ bên ngoài (ví dụ: pgAdmin)
+      - "5433:5432"
     networks:
       - vntmtool_network
-    healthcheck: # Kiểm tra sức khỏe của database
+    healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 10s
       timeout: 5s
