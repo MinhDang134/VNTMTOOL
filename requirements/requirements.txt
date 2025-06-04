@@ -13,6 +13,9 @@ psycopg2-binary==2.9.9
 python-dotenv==1.0.0
 aiohttp==3.9.1
 aiohttp-socks==0.8.4
+sqlmodel
+pydantic-settings
+httpx
 
 # Task Scheduling
 schedule==1.2.1
