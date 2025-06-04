@@ -3,18 +3,18 @@ import uuid
 from urllib.parse import urlparse, unquote
 import httpx
 from typing import List, Optional, Callable, Dict, Any    
-from datetime import datetime, timezone, date as date_type
+from datetime import datetime, timezone, date as date_type, timedelta
 from bs4 import BeautifulSoup
 # from datetime import datetime, timezone    (Đã có ở trên)
 import asyncio
 from src.tools.models import Brand
 from src.tools.config import settings
-from sqlmodel import Session, select
+from sqlmodel import Session, select, or_, and_
 from src.tools.database import bulk_create
 import random
 import logging
 
-
+logger_service = logging.getLogger(__name__)
 
 class ScraperService:
     def __init__(self, media_dir: str):    
@@ -55,8 +55,7 @@ class ScraperService:
         logging.debug(f"dùng proxy số : {proxy_ip}:{proxy_port}")
         return proxy_str
 
-    async def download_image(self,
-                             image_url_original: str) -> str | None:
+    async def download_image(self,image_url_original: str) -> str | None:
         if not image_url_original:
             logging.warning("download_image gọi với một link ảnh gốc rỗng.")
             return None
@@ -440,7 +439,17 @@ class ScraperService:
     async def check_pending_brands(self, session: Session):
         logger = logging.getLogger(f"{self.__class__.__name__}.check_pending_brands")
         logger.info("Bắt đầu kiểm tra các đơn có trạng thái 'Đang giải quyết'...")
-        statement = select(Brand).where(Brand.status == "Đang giải quyết")
+        one_month_ago = datetime.now(timezone.utc) - timedelta(days=30)
+        statement = select(Brand).where(
+            Brand.status == "Đang giải quyết",
+            or_(
+                Brand.va_count >= 5,
+                and_(
+                    Brand.va_count < 5,
+                    Brand.updated_at < one_month_ago
+                )
+            )
+        )
         pending_brands: List[Brand] = session.exec(statement).all()
 
         if not pending_brands:
@@ -547,3 +556,42 @@ class ScraperService:
             logger.info("✅ Không có trạng thái đơn nào cần cập nhật sau khi kiểm tra toàn bộ danh sách.")
 
         logger.info(f"Hoàn tất kiểm tra. Đã xử lý {processed_count} đơn, cập nhật {updated_count} đơn.")
+
+    async def increment_brand_search_count(self, session: Session, brand_name: str) -> List[Dict[str, Any]]:
+        logger_service.info(f"📈 Yêu cầu tăng va_count và lấy thông tin cho nhãn hiệu: '{brand_name}'")
+        brands_info_to_return: List[Dict[str, Any]] = []
+
+        if not brand_name:
+            logger_service.warning("⚠️ Tên nhãn hiệu rỗng, không thể xử lý.")
+            return brands_info_to_return
+
+        try:
+            statement = select(Brand).where(Brand.brand_name == brand_name)
+            brands_to_update = session.exec(statement).all()
+
+            if brands_to_update:
+                updated_count_for_log = 0
+                for brand_obj in brands_to_update:
+                    logger_service.debug(
+                        f"🔍 Xử lý nhãn hiệu: ID {brand_obj.id}, Tên: {brand_obj.brand_name}, va_count hiện tại: {brand_obj.va_count}")
+
+                    brand_obj.va_count = (brand_obj.va_count or 0) + 1
+                    brand_obj.updated_at = datetime.now(timezone.utc)
+                    session.add(brand_obj)
+                    updated_count_for_log += 1
+
+                    brand_info = brand_obj.model_dump(exclude={'va_count', 'created_at', 'updated_at'})
+                    brands_info_to_return.append(brand_info)
+
+                session.commit()
+
+                logger_service.info(f"✅ Đã tăng va_count cho {updated_count_for_log} bản ghi khớp với '{brand_name}'.")
+                return brands_info_to_return
+            else:
+                logger_service.warning(
+                    f"🤷 Không tìm thấy nhãn hiệu '{brand_name}' trong cơ sở dữ liệu.")
+                return brands_info_to_return
+        except Exception as e:
+            logger_service.error(f"❌ Lỗi khi tăng va_count và lấy thông tin cho '{brand_name}': {e}", exc_info=True)
+            session.rollback()
+            return []
