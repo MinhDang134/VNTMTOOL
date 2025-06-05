@@ -1,5 +1,5 @@
 import asyncio
-import httpx  # Dùng httpx thay cho requests
+import httpx
 import traceback
 from src.tools.config import settings
 
@@ -9,10 +9,10 @@ class TelegramNotifier:
     CHAT_ID = settings.CHAT_ID_BOT
     BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
-
     @staticmethod
-    async def _send_async(text: str):
+    async def _send_async(text: str, use_proxy: bool):
         if not TelegramNotifier.BOT_TOKEN or not TelegramNotifier.CHAT_ID:
+            print("Thiếu BOT_TOKEN hoặc CHAT_ID để gửi thông báo Telegram.")
             return
 
         payload = {
@@ -21,20 +21,37 @@ class TelegramNotifier:
             'parse_mode': 'HTML'
         }
 
-        proxies = settings.PROXY_URL_BOT if hasattr(settings, 'PROXY_URL') and settings.PROXY_URL else None
+
+        proxies = None
+        if use_proxy:
+            # Đảm bảo biến PROXY_URL_BOT tồn tại và có giá trị
+            if hasattr(settings, 'PROXY_URL_BOT') and settings.PROXY_URL_BOT:
+                proxies = settings.PROXY_URL_BOT
+                print(f"Đang gửi thông báo Telegram qua proxy: {proxies}")
+            else:
+                print("Cảnh báo: Yêu cầu sử dụng proxy nhưng PROXY_URL_BOT không được cấu hình.")
+        else:
+            print("Đang gửi thông báo Telegram không qua proxy.")
 
         try:
             async with httpx.AsyncClient(proxies=proxies) as client:
                 await client.post(TelegramNotifier.BASE_URL, data=payload, timeout=20.0)
         except Exception as e:
-            print(f"Lỗi nghiêm trọng khi gửi thông báo Telegram bất đồng bộ: {e}")
+            print(f"Lỗi nghiêm trọng khi gửi thông báo Telegram (proxy: {use_proxy}): {e}")
+            traceback.print_exc()
 
     @staticmethod
-    def send_message(text: str, is_error: bool = False):
+    def send_message(text: str, use_proxy: bool, is_error: bool = False):
         if len(text) > 4000:
             text = text[:4000] + "\n... (nội dung đã được rút gọn)"
         try:
-            asyncio.run(TelegramNotifier._send_async(text))
+            asyncio.run(TelegramNotifier._send_async(text, use_proxy=use_proxy))
+        except RuntimeError as e:
+            if "cannot run loop while another loop is running" in str(e):
+                loop = asyncio.get_event_loop()
+                loop.create_task(TelegramNotifier._send_async(text, use_proxy=use_proxy))
+            else:
+                print(f"Lỗi Runtime khi gửi Telegram: {e}")
         except Exception as e:
             print(f"Lỗi khi khởi chạy tác vụ gửi Telegram: {e}")
 

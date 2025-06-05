@@ -2,8 +2,6 @@ import sys
 import os
 import asyncio
 import logging
-
-from src.tools.service import ScraperService
 from src.tools.config import settings
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))

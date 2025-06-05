@@ -139,7 +139,6 @@ def get_next_day_to_process() -> date_type:
         f"Không có trạng thái ngày hoàn thành hợp lệ. Bắt đầu từ ngày cấu hình mặc định: {start_date.strftime('%Y-%m-%d')}")
     return start_date
 
-
 def get_overall_end_date() -> date_type:
     if settings.OVERALL_SCRAPE_END_YEAR and settings.OVERALL_SCRAPE_END_MOTH and settings.OVERALL_SCRAPE_END_DAY:
         try:
@@ -153,11 +152,9 @@ def get_overall_end_date() -> date_type:
                 f"Một số giá trị OVERALL_SCRAPE_END trong settings không hợp lệ hoặc thiếu: {e}. Sẽ mặc định là ngày hôm qua.")
     return datetime.now().date() - timedelta(days=1)
 
-
 async def daily_scraping_manager():
     logging.info("Khởi tạo Scraping Manager với Multiprocessing.")
 
-    # Bỏ Manager và Lock vì không cần nữa
     with ProcessPoolExecutor(max_workers=NUM_PROCESSES) as executor:
         current_day_to_process = get_next_day_to_process()
         overall_end_date = get_overall_end_date()
@@ -181,7 +178,7 @@ async def daily_scraping_manager():
 
                         day_key = f"brands_{processed_date.strftime('%Y-%m-%d')}_{processed_date.strftime('%Y-%m-%d')}"
 
-                        # Manager chịu trách nhiệm lưu lại trang cuối cùng mà worker đã xử lý
+
                         if last_page > 0:
                             save_scrape_state(PAGE_STATE_FILE_PATH, day_key, last_page, None)
 
@@ -200,7 +197,7 @@ async def daily_scraping_manager():
                                 f"💀 Worker cho ngày {processed_date.strftime('%Y-%m-%d')} bị CRASH. Lý do: {message}")
                             error_title = f"Worker CRASHed on day {processed_date.strftime('%Y-%m-%d')}"
                             error_message = TelegramNotifier.format_error_message(error_title, traceback_str)
-                            TelegramNotifier.send_message(error_message, is_error=True)
+                            TelegramNotifier.send_message(error_message, use_proxy=True, is_error=True)
                         else:
                             logging.warning(
                                 f"Ngày {processed_date.strftime('%Y-%m-%d')} chưa hoàn thành bởi worker. Lý do: {message}.")
@@ -211,7 +208,7 @@ async def daily_scraping_manager():
                             exc_info=True)
                         error_title = f"Lỗi MANAGER khi xử lý kết quả ngày {processed_date.strftime('%Y-%m-%d')}"
                         error_message = TelegramNotifier.format_error_message(error_title, e)
-                        TelegramNotifier.send_message(error_message, is_error=True)
+                        TelegramNotifier.send_message(error_message, use_proxy=True, is_error=True)
 
                 while len(active_futures) < NUM_PROCESSES:
                     if current_day_to_process > overall_end_date:
@@ -231,13 +228,12 @@ async def daily_scraping_manager():
 
                 if not active_futures and current_day_to_process > overall_end_date:
                     break
-                await asyncio.sleep(1)  # Tăng sleep một chút để giảm tải CPU cho vòng lặp chính
+                await asyncio.sleep(1)
 
             if not active_futures and current_day_to_process > overall_end_date:
                 logging.info("Đã xử lý hết tất cả các ngày theo kế hoạch.")
-                break  # Thoát khỏi vòng lặp while True chính
+                break
 
-            # Xử lý các worker còn lại sau khi hết giờ làm việc
             if active_futures:
                 logging.info(f"Hết giờ làm việc, chờ {len(active_futures)} tasks đang chạy hoàn thành...")
                 for future in as_completed(list(active_futures.keys())):
@@ -267,7 +263,8 @@ async def daily_scraping_manager():
                                 f"💀 Worker (sau giờ) cho ngày {processed_date.strftime('%Y-%m-%d')} bị CRASH. Lý do: {message}")
                             error_title = f"Worker (sau giờ) CRASHed on day {processed_date.strftime('%Y-%m-%d')}"
                             error_message = TelegramNotifier.format_error_message(error_title, traceback_str)
-                            TelegramNotifier.send_message(error_message, is_error=True)
+                            # ĐÃ SỬA: Thêm use_proxy=True
+                            TelegramNotifier.send_message(error_message, use_proxy=True, is_error=True)
 
                     except Exception as e:
                         logging.error(
@@ -275,7 +272,8 @@ async def daily_scraping_manager():
                             exc_info=True)
                         error_title = f"Lỗi MANAGER khi xử lý kết quả (sau giờ) ngày {processed_date.strftime('%Y-%m-%d')}"
                         error_message = TelegramNotifier.format_error_message(error_title, e)
-                        TelegramNotifier.send_message(error_message, is_error=True)
+                        # ĐÃ SỬA: Thêm use_proxy=True
+                        TelegramNotifier.send_message(error_message, use_proxy=True, is_error=True)
                 active_futures.clear()
 
             logging.info(f"====== KẾT THÚC PHIÊN LÀM VIỆC lúc {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ======")
@@ -295,20 +293,18 @@ except Exception as e_db_setup:
     logging.critical(f"Không thể thiết lập schema database, dừng ứng dụng: {e_db_setup}")
     exit(1)
 
-
 async def main_async_runner():
     await daily_scraping_manager()
 
-
 if __name__ == "__main__":
-        try:
-            TelegramNotifier.send_message("✅ <b>Tool Scraper đã bắt đầu chạy.</b>")
-            asyncio.run(main_async_runner())
-        except KeyboardInterrupt:
-            TelegramNotifier.send_message("🟡 <b>Tool bị dừng bởi người dùng (Ctrl+C).</b>")
-        except Exception as e:
-            error_title = "LỖI NGHIÊM TRỌNG - TOÀN BỘ CHƯƠNG TRÌNH ĐÃ DỪNG"
-            error_message = TelegramNotifier.format_error_message(error_title, e)
-            TelegramNotifier.send_message(error_message, is_error=True)
-        finally:
-            TelegramNotifier.send_message("ℹ️ <b>Chương trình đã kết thúc.</b>")
+    try:
+        TelegramNotifier.send_message("✅ <b>Tool Scraper đã bắt đầu chạy.</b>", use_proxy=True)
+        asyncio.run(main_async_runner())
+    except KeyboardInterrupt:
+        TelegramNotifier.send_message("🟡 <b>Tool bị dừng bởi người dùng (Ctrl+C).</b>", use_proxy=True)
+    except Exception as e:
+        error_title = "LỖI NGHIÊM TRỌNG - TOÀN BỘ CHƯƠNG TRÌNH ĐÃ DỪNG"
+        error_message = TelegramNotifier.format_error_message(error_title, e)
+        TelegramNotifier.send_message(error_message, use_proxy=True, is_error=True)
+    finally:
+        TelegramNotifier.send_message("ℹ️ <b>Chương trình đã kết thúc.</b>", use_proxy=True)
