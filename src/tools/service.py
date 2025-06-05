@@ -440,6 +440,7 @@ class ScraperService:
         logger = logging.getLogger(f"{self.__class__.__name__}.check_pending_brands")
         logger.info("Bắt đầu kiểm tra các đơn có trạng thái 'Đang giải quyết'...")
         one_month_ago = datetime.now(timezone.utc) - timedelta(days=30)
+        logger.info(f"Giá trị 'one_month_ago' được tính toán: {one_month_ago.isoformat()}")
         statement = select(Brand).where(
             Brand.status == "Đang giải quyết",
             or_(
