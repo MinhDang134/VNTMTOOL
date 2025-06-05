@@ -312,7 +312,7 @@ class ScraperService:
                             f"nằm ngoài khoảng đang scrape ({start_date.strftime('%Y-%m-%d')} - {end_date.strftime('%Y-%m-%d')}). Bỏ qua.")
                         continue
 
-                    # ensure_partition_exists(parsed_application_date)    (Đã được chuyển ra ngoài worker function trong main.py)
+
 
                     brand_name_tag = row.select_one("td:nth-child(4) label")
                     brand_name = brand_name_tag.text.strip() if brand_name_tag else ""
