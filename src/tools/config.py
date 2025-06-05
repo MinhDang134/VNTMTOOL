@@ -48,6 +48,19 @@ class Settings(BaseSettings):
     CONCURRENT_SCRAPING_TASKS: int = int(os.getenv("CONCURRENT_SCRAPING_TASKS"))
 
 
+    PROXY_LOGIN_BOT : str = os.getenv("PROXY_LOGIN")
+    PROXY_PASSWORD_BOT: str = os.getenv("PROXY_PASSWORD")
+    BOT_TOKEN_BOT: str = os.getenv("BOT_TOKEN")
+    CHAT_ID_BOT: str = os.getenv("CHAT_ID")
+    PROXY_IP_HTTP_BOT: str = os.getenv("PROXY_IP_HTTP")
+    PROXY_PORT_HTTP_BOT: int  = int (os.getenv("PROXY_PORT_HTTP"))
+    PROXY_URL_BOT: str = os.getenv("PROXY_URL")
+
+
+
+
+
+
     class Config:
         env_file = ".env"
         env_file_encoding = 'utf-8'

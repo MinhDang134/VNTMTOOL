@@ -13,6 +13,7 @@ from src.tools.state_manager import (
     load_control_state, save_control_state, get_control_state_path,
     clear_page_state_for_day
 )
+from src.tele_bot.telegram_notifier import TelegramNotifier
 import logging   
 # Đường dẫn tuyệt đối bạn muốn lưu log
 LOG_OUTPUT_DIR_PATH = "/home/minhdangpy134/Logvntmtool"
@@ -93,7 +94,10 @@ def scrape_day_worker(current_day_to_process: date_type,db_url: str,page_state_f
         return {"date": current_day_to_process, "result": scrape_result}   
 
     except Exception as e:   
-        log.error(f"Lỗi nghiêm trọng trong worker cho ngày {current_day_to_process}: {e}", exc_info=True)   
+        log.error(f"Lỗi nghiêm trọng trong worker cho ngày {current_day_to_process}: {e}", exc_info=True)
+        error_title = f"Worker bị CRASH khi xử lý ngày {current_day_to_process.strftime('%Y-%m-%d')}"
+        error_message = TelegramNotifier.format_error_message(error_title, e)
+        TelegramNotifier.send_message(error_message, is_error=True)
         return {"date": current_day_to_process,
                 "result": {"status": "worker_crash", "message": str(e), "brands_processed_count": 0}}   
     finally:   
@@ -298,12 +302,26 @@ async def main_async_runner():
 
 
 if __name__ == "__main__":
-    try:   
-        asyncio.run(main_async_runner())   
-    except KeyboardInterrupt:   
-        logging.info("Tool bị dừng bởi người dùng (Ctrl+C).")   
-    except Exception as e:   
-        logging.critical(f"Lỗi nghiêm trọng không bắt được ở phạm vi cao nhất (main_async_runner): {e}",
-                         exc_info=True)   
-    finally:   
-        logging.info("Chương trình kết thúc.")   
+        clean_exit = False
+        try:
+            TelegramNotifier.send_message("✅ <b>Tool Scraper đã bắt đầu chạy.</b>")
+            asyncio.run(main_async_runner())
+            clean_exit = True
+
+        except KeyboardInterrupt:
+            logging.info("Tool bị dừng bởi người dùng (Ctrl+C).")
+            TelegramNotifier.send_message("🟡 <b>Tool bị dừng bởi người dùng (Ctrl+C).</b>")
+
+
+        except Exception as e:
+            logging.critical(f"Lỗi nghiêm trọng không bắt được ở phạm vi cao nhất (main_async_runner): {e}",
+                             exc_info=True)
+            error_title = "LỖI NGHIÊM TRỌNG - TOÀN BỘ CHƯƠNG TRÌNH ĐÃ DỪNG"
+            error_message = TelegramNotifier.format_error_message(error_title, e)
+            TelegramNotifier.send_message(error_message, is_error=True)
+
+
+        finally:
+            logging.info("Chương trình kết thúc.")
+
+            TelegramNotifier.send_message("ℹ️ <b>Chương trình đã kết thúc.</b>")
