@@ -5,6 +5,7 @@
 # Bỏ qua các thư mục chứa dependencies (thư viện cài đặt)
 # Thường được quản lý bởi các package manager như npm, pip, composer, Maven, Gradle,...
 /node_modules/
+
 /media_root/
 /scraper_state.json/
 /logs/
@@ -52,6 +53,7 @@ pnpm-debug.log*
 scraper_state.json
 scraper_activity.log
 scraper_control_state.json
+scraper_state.sqlite3
 scraper_page_state.json
 .env.*
 !.env.example

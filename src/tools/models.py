@@ -1,4 +1,3 @@
-#src/tools/models.py
 from datetime import date, datetime
 from typing import Optional
 from sqlmodel import SQLModel, Field

@@ -1,10 +1,10 @@
-from pydantic_settings import BaseSettings
-from typing import List, Optional
 import os
 from dotenv import load_dotenv
+from typing import List, Optional
+from pydantic_settings import BaseSettings
 load_dotenv()
-class Settings(BaseSettings):
 
+class Settings(BaseSettings):
 
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://user:password@host:port/dbname")
     DB_USER: Optional[str] = os.getenv("DB_USER")
@@ -47,7 +47,6 @@ class Settings(BaseSettings):
 
     CONCURRENT_SCRAPING_TASKS: int = int(os.getenv("CONCURRENT_SCRAPING_TASKS"))
 
-
     PROXY_LOGIN_BOT : str = os.getenv("PROXY_LOGIN")
     PROXY_PASSWORD_BOT: str = os.getenv("PROXY_PASSWORD")
     BOT_TOKEN_BOT: str = os.getenv("BOT_TOKEN")
@@ -55,11 +54,6 @@ class Settings(BaseSettings):
     PROXY_IP_HTTP_BOT: str = os.getenv("PROXY_IP_HTTP")
     PROXY_PORT_HTTP_BOT: int  = int (os.getenv("PROXY_PORT_HTTP"))
     PROXY_URL_BOT: str = os.getenv("PROXY_URL")
-
-
-
-
-
 
     class Config:
         env_file = ".env"

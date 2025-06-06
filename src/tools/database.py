@@ -1,15 +1,14 @@
 import os
 import sys
-from datetime import datetime, timedelta
-from sqlmodel import SQLModel, Session, create_engine as create_engine_sqlmodel
-from contextlib import contextmanager
+import logging
 from typing import Generator
 from src.tools.config import settings
-import logging
+from contextlib import contextmanager
+from datetime import datetime, timedelta
 from sqlalchemy import text, Engine, create_engine, inspect
-import logging
+from sqlmodel import SQLModel, Session, create_engine as create_engine_sqlmodel
+#
 logger = logging.getLogger(__name__)
-
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR_PATH = os.path.dirname(SCRIPT_DIR)
 PROJECT_ROOT_PATH = os.path.dirname(SRC_DIR_PATH)
@@ -17,15 +16,7 @@ PROJECT_ROOT_PATH = os.path.dirname(SRC_DIR_PATH)
 if PROJECT_ROOT_PATH not in sys.path:
     sys.path.insert(0, PROJECT_ROOT_PATH)
 
-
-db_engine: Engine = create_engine_sqlmodel(
-    settings.DATABASE_URL,
-    echo=True,
-    pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10
-)
-
+db_engine: Engine = create_engine_sqlmodel(settings.DATABASE_URL,echo=True,pool_pre_ping=True,pool_size=5,max_overflow=10)
 @contextmanager
 def get_session(engine_to_use: Engine = db_engine) -> Generator[Session, None, None]:
     session = Session(engine_to_use)
@@ -89,7 +80,6 @@ def ensure_partition_exists(date: datetime,engine_to_use: Engine = db_engine) ->
     except Exception as e:
         logging.error(f"❌ Lỗi khi kiểm tra/tạo partition '{partition_name}': {str(e)}")  
         raise
-
 
 def setup_database_schema():
     engine = create_engine(settings.DATABASE_URL)
