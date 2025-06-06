@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vntmtool_app
+    env_file:
+      - .env
+
+    volumes:
+      - ./media_root:/app/media_root
+      - ./logs:/app/logs
+      - ./scraper_control_state.json:/app/scraper_control_state.json
+      - ./scraper_page_state.json:/app/scraper_page_state.json
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - vntmtool_network
+    restart: unless-stopped
+
+  db:
+    image: postgres:15-alpine
+    container_name: vntmtool_db
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    networks:
+      - vntmtool_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+networks:
+  vntmtool_network:
+    driver: bridge
