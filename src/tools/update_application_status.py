@@ -4,10 +4,11 @@ import asyncio
 import logging
 from src.tools.config import settings
 
+
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR_PATH = os.path.dirname(SCRIPT_DIR)
 PROJECT_ROOT_PATH = os.path.dirname(SRC_DIR_PATH)
-
 if PROJECT_ROOT_PATH not in sys.path:
     sys.path.insert(0, PROJECT_ROOT_PATH)
 
