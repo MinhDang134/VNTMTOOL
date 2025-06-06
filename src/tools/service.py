@@ -1,18 +1,18 @@
 import os
 import uuid
-from urllib.parse import urlparse, unquote
 import httpx
-from typing import List, Optional, Callable, Dict, Any    
-from datetime import datetime, timezone, date as date_type, timedelta
-from bs4 import BeautifulSoup
-# from datetime import datetime, timezone    (Đã có ở trên)
 import asyncio
-from src.tools.models import Brand
-from src.tools.config import settings
-from sqlmodel import Session, select, or_, and_
-from src.tools.database import bulk_create
 import random
 import logging
+from bs4 import BeautifulSoup
+from src.tools.models import Brand
+from src.tools.config import settings
+from src.tools.database import bulk_create
+from urllib.parse import urlparse, unquote
+from sqlmodel import Session, select, or_, and_
+from typing import List, Optional, Callable, Dict, Any
+from src.Exception.exceptions import CustomScrapingError
+from datetime import datetime, timezone, date as date_type, timedelta
 
 logger_service = logging.getLogger(__name__)
 
@@ -31,16 +31,15 @@ class ScraperService:
             "Upgrade-Insecure-Requests": "1"
         }
 
-
     def get_next_proxy(self) -> Optional[str]:
         if not settings.PROXY_IPS or not settings.PROXY_PORTS:
-            logging.debug("proxy hoặc ip rỗng . chạy không có proxy.")
+            logger_service.debug("proxy hoặc ip rỗng . chạy không có proxy.")
             return None
 
         has_auth = settings.PROXY_USERNAME and settings.PROXY_PASSWORD
 
         if not (len(settings.PROXY_IPS) == len(settings.PROXY_PORTS)):
-            logging.error("lỗi config proxy: độ dài của proxy không trùng .")
+            logger_service.error("lỗi config proxy: độ dài của proxy không trùng .")
             return None
 
         proxy_ip = settings.PROXY_IPS[self.proxy_index]
@@ -52,12 +51,12 @@ class ScraperService:
             proxy_str = f"socks5://{proxy_ip}:{proxy_port}"
 
         self.proxy_index = (self.proxy_index + 1) % len(settings.PROXY_IPS)
-        logging.debug(f"dùng proxy số : {proxy_ip}:{proxy_port}")
+        logger_service.debug(f"dùng proxy số : {proxy_ip}:{proxy_port}")
         return proxy_str
 
-    async def download_image(self,image_url_original: str) -> str | None:
+    async def download_image(self, image_url_original: str, context: dict = None) -> str | None:
         if not image_url_original:
-            logging.warning("download_image gọi với một link ảnh gốc rỗng.")
+            logger_service.warning("download_image gọi với một link ảnh gốc rỗng.")
             return None
 
 
@@ -66,7 +65,7 @@ class ScraperService:
         try:
             os.makedirs(full_save_folder_on_disk, exist_ok=True)
         except OSError as e:
-            logging.error(f"không thể tạo một thư mục  {full_save_folder_on_disk}: {e}")
+            logger_service.error(f"không thể tạo một thư mục  {full_save_folder_on_disk}: {e}")
             return None
 
         try:
@@ -75,7 +74,7 @@ class ScraperService:
 
             async with httpx.AsyncClient(verify=ssl_verify, timeout=download_timeout,
                                          follow_redirects=True) as client:
-                logging.info(f"Đang cố gắng tải xuống hình ảnh từ: {image_url_original}")
+                logger_service.info(f"Đang cố gắng tải xuống hình ảnh từ: {image_url_original}")
                 img_response = await client.get(image_url_original, headers=self.headers)
                 img_response.raise_for_status()
                 parsed_url = urlparse(image_url_original)
@@ -103,7 +102,7 @@ class ScraperService:
                     determined_ext = ".svg"
 
                 if not determined_ext:
-                    logging.warning(
+                    logger_service.warning(
                         f"Không thể xác định phần mở rộng chuẩn từ Content-Type '{content_type}' for {image_url_original}. "
                         f"Phần mở rộng gốc từ URL là '{ext_from_url}'. Mặc định là .jpg như một giải pháp dự phòng.")
                     determined_ext = ".jpg"
@@ -124,7 +123,7 @@ class ScraperService:
                 image_subfolder_name = os.path.basename(self.media_dir)    
                 relative_url_path = os.path.join(image_subfolder_name, unique_filename).replace("\\", "/")    
 
-                logging.info(
+                logger_service.info(
                     f"Hình ảnh đã được tải xuống thành công: {save_path_on_disk}. Phần URL tương đối: {relative_url_path}")
                 logging.debug(
                     f"DEBUG download_image: Đường dẫn URL tương đối cần trả về: '{relative_url_path}' (repr: {repr(relative_url_path)})")
@@ -133,15 +132,14 @@ class ScraperService:
         except httpx.HTTPStatusError as e_http:
             error_text = e_http.response.text if hasattr(e_http, 'response') and e_http.response and hasattr(
                 e_http.response, 'text') else str(e_http)
-            status_code_text = e_http.response.status_code if hasattr(e_http, 'response') and hasattr(e_http.response,
-                                                                                                      'status_code') else 'N/A'
-            logging.error(f"HTTP lỗi  {status_code_text} tải image {image_url_original}: {error_text}")
+            status_code_text = e_http.response.status_code if hasattr(e_http, 'response') and hasattr(e_http.response,'status_code') else 'N/A'
+            logger_service.error(f"HTTP lỗi  {status_code_text} tải image {image_url_original}: {error_text}")
             return None
         except httpx.RequestError as e_req:
-            logging.error(f"Yêu cầu tải xuống hình ảnh lỗi {image_url_original}: {str(e_req)}")
+            logger_service.error(f"Yêu cầu tải xuống hình ảnh lỗi {image_url_original}: {str(e_req)}")
             return None
         except Exception as e:
-            logging.error(f"Lỗi chung khi tải hình ảnh {image_url_original}: {str(e)}", exc_info=True)
+            logger_service.error(f"Lỗi chung khi tải hình ảnh {image_url_original}: {str(e)}", exc_info=True)
             return None
 
     async def make_request(self, url: str, max_retries: Optional[int] = None) -> Optional[httpx.Response]:
@@ -156,7 +154,7 @@ class ScraperService:
                 if attempt > 0:
                     retry_delay = random.uniform(min_delay_req + 1,
                                                  max_delay_req + 2)
-                    logging.info(f"Thử lại {url} sau {retry_delay:.2f} giây...")
+                    logger_service.info(f"Thử lại {url} sau {retry_delay:.2f} giây...")
                     await asyncio.sleep(retry_delay)
 
                 async with httpx.AsyncClient(
@@ -176,41 +174,41 @@ class ScraperService:
                     e_http.response, 'text') else str(e_http)
                 status_code = e_http.response.status_code if hasattr(e_http, 'response') and hasattr(e_http.response,
                                                                                                      'status_code') else None
-                logging.warning(
+                logger_service.warning(
                     f"Lỗi trạng thái HTTP (Cố gắng {attempt + 1}/{effective_max_retries}) for {url}: {status_code or 'N/A'} - {error_text}")
 
                 if status_code in [403, 401, 429]:
-                    logging.error(
+                    logger_service.error(
                         f"Lỗi HTTP nghiêm trọng {status_code} for {url}. Thay đổi proxy và thử lại nếu có thể.")
                     current_proxy = self.get_next_proxy()
                     proxies_config = {"http://": current_proxy, "https://": current_proxy} if current_proxy else None
-                    if attempt == effective_max_retries - 1: logging.error(
+                    if attempt == effective_max_retries - 1: logger_service.error(
                         f"Thử lại lần cuối thất bại với lỗi {status_code} cho {url}."); return None
                     await asyncio.sleep(random.uniform(5, 10))
                     continue
-                if attempt == effective_max_retries - 1: logging.error(
+                if attempt == effective_max_retries - 1: logger_service.error(
                     f"Thử lại lần cuối thất bại cho {url} với lỗi {status_code}."); return None
                 await asyncio.sleep(random.uniform(2, 5))
 
             except httpx.RequestError as e_req:
-                logging.warning(
+                logger_service.warning(
                     f"Yêu cầu Lỗi (Cố gắng {attempt + 1}/{effective_max_retries}) for {url}: {str(e_req)}")
                 current_proxy = self.get_next_proxy()
                 proxies_config = {"http://": current_proxy,
                                   "https": current_proxy} if current_proxy else None
-                if attempt == effective_max_retries - 1: logging.error(
+                if attempt == effective_max_retries - 1: logger_service.error(
                     f"Thử lại lần cuối thất bại cho {url} với lỗi request: {str(e_req)}."); return None
                 await asyncio.sleep(random.uniform(3, 7))
 
             except Exception as e_generic:
-                logging.error(
+                logger_service.error(
                     f"Lỗi chung (Cố gắng {attempt + 1}/{effective_max_retries}) for {url}: {str(e_generic)}",
                     exc_info=True)
-                if attempt == effective_max_retries - 1: logging.error(
+                if attempt == effective_max_retries - 1: logger_service.error(
 
                     f"Thử lại lần cuối thất bại cho {url} với lỗi chung: {str(e_generic)}."); return None
                 await asyncio.sleep(random.uniform(2, 5))
-        logging.error(f"All {effective_max_retries} thử lại không thành công cho URL: {url}")
+        logger_service.error(f"All {effective_max_retries} thử lại không thành công cho URL: {url}")
         return None
 
     async def scrape_by_date_range(self, start_date: date_type, end_date: date_type, session: Session,initial_start_page: int, state_save_callback: Callable[[int], None]) -> Dict[str, Any]:
@@ -232,7 +230,7 @@ class ScraperService:
                 time_diff = datetime.now() - self.last_request_time
                 if time_diff.total_seconds() < request_interval_seconds:
                     sleep_duration = request_interval_seconds - time_diff.total_seconds()
-                    logging.info(
+                    logger_service.info(
                         f"Đạt giới hạn request nội bộ. Nghỉ {sleep_duration:.2f} giây.")
                     await asyncio.sleep(sleep_duration)
                 self.request_count = 0
@@ -242,37 +240,39 @@ class ScraperService:
             end_str = end_date.strftime("%d.%m.%Y")
             url = f"https://vietnamtrademark.net/search?fd={start_str}%20-%20{end_str}&p={current_page}"
 
-            logging.info(
+            logger_service.info(
                 f"Đang cào trang: {current_page} cho ngày {start_str} (URL: {url})")
             response = await self.make_request(url)
             self.request_count += 1
 
             if not response:
-                logging.error(
-                    f"Không nhận được phản hồi cho trang {current_page} (URL: {url}). Dừng xử lý ngày này.")
-                scrape_status_result = {
-                    "status": "request_error",
-                    "brands_processed_count": len(brands_collected_in_this_run),
-                    "message": f"Failed to get response for page {current_page} of day {start_str}."
-                }
-                break
+                logger_service.error(
+                    f"Không nhận được phản hồi cho trang {current_page} (URL: {url}).")
+                # Ném lỗi ra ngoài để worker bắt được
+                raise CustomScrapingError(
+                    message="Failed to get response from make_request.",
+                    page=current_page,
+                    day=start_date.strftime('%Y-%m-%d'),
+                    original_error=Exception("Make_request returned None") # Tạo một lỗi gốc để mô tả
+                )
 
             try:
                 soup = BeautifulSoup(response.text, 'html.parser')
             except Exception as e_soup:
-                logging.error(f"Lỗi khi parse HTML cho trang {current_page} ngày {start_str}: {e_soup}",
+                logger_service.error(f"Lỗi khi parse HTML cho trang {current_page} ngày {start_str}: {e_soup}",
                               exc_info=True)
-                scrape_status_result = {
-                    "status": "soup_error",
-                    "brands_processed_count": len(brands_collected_in_this_run),
-                    "message": f"HTML parsing error for page {current_page} of day {start_str}."
-                }
-                break
+                raise CustomScrapingError(
+                    message="Failed to parse HTML with BeautifulSoup.",
+                    page=current_page,
+                    day=start_str,
+                    original_error=e_soup
+                )
+
 
             rows = soup.select("table.table tbody tr")
             if not rows:
                 if current_page == 1:
-                    logging.info(
+                    logger_service.info(
                         f"Không tìm thấy dữ liệu nào trên trang {current_page} cho ngày {start_str}. Có thể ngày này không có nhãn hiệu.")
                     scrape_status_result = {
                         "status": "no_data_on_first_page",
@@ -280,7 +280,7 @@ class ScraperService:
                         "message": f"No data found on the first page for day {start_str}."
                     }
                 else:
-                    logging.info(
+                    logger_service.info(
                         f"Không tìm thấy hàng (dữ liệu) nào trên trang {current_page} cho ngày {start_str}. Kết thúc cho ngày này.")
                     scrape_status_result = {
                         "status": "completed_all_pages",
@@ -295,19 +295,19 @@ class ScraperService:
                 try:
                     date_text_tag = row.select_one("td:nth-child(7)")
                     if not date_text_tag or not date_text_tag.text.strip():
-                        logging.warning(
+                        logger_service.warning(
                             f"Hàng {row_idx + 1} trang {current_page} ngày {start_str}: Thiếu ngày nộp đơn. Bỏ qua hàng.")
                         continue
                     try:
                         parsed_application_date = datetime.strptime(date_text_tag.text.strip(), "%d.%m.%Y").date()
                     except ValueError as ve:
-                        logging.warning(
+                        logger_service.warning(
                             f"Hàng {row_idx + 1} trang {current_page} ngày {start_str}: Lỗi parse ngày '{date_text_tag.text.strip()}': {ve}. Bỏ qua hàng.")
                         continue
 
                     if not (
                             start_date <= parsed_application_date <= end_date):
-                        logging.warning(
+                        logger_service.warning(
                             f"Hàng {row_idx + 1} trang {current_page}: Ngày nộp đơn {parsed_application_date.strftime('%Y-%m-%d')} "
                             f"nằm ngoài khoảng đang scrape ({start_date.strftime('%Y-%m-%d')} - {end_date.strftime('%Y-%m-%d')}). Bỏ qua.")
                         continue
@@ -341,7 +341,7 @@ class ScraperService:
                     application_number_tag = row.select_one("td:nth-child(8) a")
                     application_number = application_number_tag.text.strip() if application_number_tag else ""
                     if not application_number:
-                        logging.warning(
+                        logger_service.warning(
                             f"Hàng {row_idx + 1} trang {current_page} ngày {start_str}: Thiếu số đơn. Bỏ qua hàng.")
                         continue
 
@@ -359,7 +359,7 @@ class ScraperService:
                     existing_brand = session.exec(stmt).first()
 
                     if existing_brand:
-                        logging.info(
+                        logger_service.info(
                             f"Brand với số đơn {application_number} (trang {current_page}, ngày {start_str}) đã tồn tại. Bỏ qua.")
                         continue
 
@@ -381,14 +381,13 @@ class ScraperService:
 
                 except Exception as e_row_processing:
                     row_html_snippet = str(row)[:250]
-                    logging.error(
+                    logger_service.error(
                         f"Lỗi xử lý hàng {row_idx + 1} trên trang {current_page} ngày {start_str}: {e_row_processing}\nHTML Snippet: {row_html_snippet}",
                         exc_info=True)
-
                     continue
 
             if brands_extracted_from_this_page:
-                logging.info(
+                logger_service.info(
                     f"Trang {current_page} ngày {start_str}: Trích xuất được {len(brands_extracted_from_this_page)} nhãn hiệu mới.")
                 try:
                     bulk_create(session, brands_extracted_from_this_page)
@@ -396,18 +395,20 @@ class ScraperService:
                     state_save_callback(current_page)
 
                 except Exception as e_db_commit:
-                    logging.error(
-                        f"Lỗi khi thêm dữ liệu cho trang {current_page} ngày {start_str} vào DB (có thể do bulk_create): {e_db_commit}",
+                    logger_service.error(
+                        f"Lỗi khi thêm dữ liệu cho trang {current_page} ngày {start_str} vào DB: {e_db_commit}",
                         exc_info=True)
-                    scrape_status_result = {
-                        "status": "db_commit_error",
-                        "brands_processed_count": len(brands_collected_in_this_run),
-                        "message": f"DB commit error on page {current_page} for day {start_str}."
-                    }
+                    raise CustomScrapingError(
+                        message="Failed to commit data to database.",
+                        page=current_page,
+                        day=start_str,
+                        original_error=e_db_commit
+                    )
+
                     break
 
             elif page_had_new_valid_data is False and rows:
-                logging.info(
+                logger_service.info(
                     f"Trang {current_page} ngày {start_str} đã xử lý nhưng không có dữ liệu mới nào được thêm vào DB.")
                 state_save_callback(current_page)
 
@@ -430,7 +431,7 @@ class ScraperService:
                 brands_collected_in_this_run) == 0 and initial_start_page == 1:
             pass
 
-        logging.info(
+        logger_service.info(
             f"Kết thúc scrape cho ngày {start_date.strftime('%Y-%m-%d')}. "
             f"Trạng thái: {scrape_status_result['status']}. "
             f"Tổng số nhãn hiệu được xử lý trong lần gọi này: {scrape_status_result['brands_processed_count']}.")

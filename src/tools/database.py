@@ -1,15 +1,14 @@
 import os
 import sys
-from datetime import datetime, timedelta
-from sqlmodel import SQLModel, Session, create_engine as create_engine_sqlmodel
-from contextlib import contextmanager
+import logging
 from typing import Generator
 from src.tools.config import settings
-import logging
+from contextlib import contextmanager
+from datetime import datetime, timedelta
 from sqlalchemy import text, Engine, create_engine, inspect
-import logging
-logger = logging.getLogger(__name__)
+from sqlmodel import SQLModel, Session, create_engine as create_engine_sqlmodel
 
+logger = logging.getLogger(__name__)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR_PATH = os.path.dirname(SCRIPT_DIR)
 PROJECT_ROOT_PATH = os.path.dirname(SRC_DIR_PATH)
@@ -17,15 +16,7 @@ PROJECT_ROOT_PATH = os.path.dirname(SRC_DIR_PATH)
 if PROJECT_ROOT_PATH not in sys.path:
     sys.path.insert(0, PROJECT_ROOT_PATH)
 
-
-db_engine: Engine = create_engine_sqlmodel(
-    settings.DATABASE_URL,
-    echo=True,
-    pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10
-)
-
+db_engine: Engine = create_engine_sqlmodel(settings.DATABASE_URL,echo=True,pool_pre_ping=True,pool_size=5,max_overflow=10)
 @contextmanager
 def get_session(engine_to_use: Engine = db_engine) -> Generator[Session, None, None]:
     session = Session(engine_to_use)
@@ -41,10 +32,8 @@ def get_session(engine_to_use: Engine = db_engine) -> Generator[Session, None, N
 
 def bulk_create(session: Session, objects: list[SQLModel]) -> None:
     try:
-        session.add_all(objects)  
-        # session.commit()   (Commit sẽ được xử lý bởi get_session context manager)
+        session.add_all(objects)
     except Exception as e:
-        # session.rollback()   (Rollback sẽ được xử lý bởi get_session context manager)
         logging.error(f"Bulk create error: {str(e)}")
         raise
 
@@ -92,16 +81,10 @@ def ensure_partition_exists(date: datetime,engine_to_use: Engine = db_engine) ->
         logging.error(f"❌ Lỗi khi kiểm tra/tạo partition '{partition_name}': {str(e)}")  
         raise
 
-
 def setup_database_schema():
     engine = create_engine(settings.DATABASE_URL)
-
-    # Lấy DB_USER từ settings để sử dụng cho OWNER, nếu có. Nếu không, mặc định là 'postgres' hoặc user trong DATABASE_URL.
-    # Ví dụ, nếu DATABASE_URL là postgresql://minhdangpy134:password@... thì user là minhdangpy134
-    # Tạm thời lấy từ DATABASE_URL nếu settings không có DB_USER riêng.
     db_user_for_owner = settings.DB_USER if settings.DB_USER else settings.DATABASE_URL.split('://')[1].split(':')[0]
 
-    # Kiểm tra xem sequence 'brand_id_seq' có tồn tại không, nếu không thì tạo
     create_sequence_sql = """
     CREATE SEQUENCE IF NOT EXISTS public.brand_id_seq;
     """

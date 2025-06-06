@@ -1,80 +1,55 @@
-import asyncio
-from datetime import datetime, timedelta, date as date_type
 import os
-from concurrent.futures import ProcessPoolExecutor, as_completed
+import asyncio
+import logging
 from functools import partial
 from sqlmodel import create_engine
 from src.tools.config import settings
 from src.tools.service import ScraperService
-from src.tools.database import get_session, ensure_partition_exists, setup_database_schema
-from src.tools.state_manager import (
-    load_scrape_state, save_scrape_state,
-    load_control_state, save_control_state, get_control_state_path,
-    clear_page_state_for_day
-)
+from src.Exception.logger_config import setup_logging
+from src.Exception.exceptions import CustomScrapingError
 from src.tele_bot.telegram_notifier import TelegramNotifier
-import logging
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from datetime import datetime, timedelta, date as date_type
+from src.tools.database import get_session, ensure_partition_exists, setup_database_schema
+from src.tools.state_manager import (load_scrape_state, save_scrape_state,load_control_state, save_control_state, get_control_state_path,clear_page_state_for_day)
+
+
+
 
 LOG_OUTPUT_DIR_PATH = "/home/minhdangpy134/Logvntmtool"
-
-
 try:
     os.makedirs(LOG_OUTPUT_DIR_PATH, exist_ok=True)
 except OSError as e:
     print(f"Lỗi khi tạo thư mục log {LOG_OUTPUT_DIR_PATH}: {e}")
-
-
-
+setup_logging(LOG_OUTPUT_DIR_PATH)
 LOG_FILE_NAME = "scraper_activity_main.txt"
 LOG_FILE_PATH = os.path.join(LOG_OUTPUT_DIR_PATH, LOG_FILE_NAME)
-
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(processName)s (%(process)d) - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(LOG_FILE_PATH, mode='a', encoding='utf-8'),
-        logging.StreamHandler()
-    ]
-)
-
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 MEDIA_PHYSICAL_DIR = os.path.join(PROJECT_ROOT, "media_root", "brand_images")
 os.makedirs(MEDIA_PHYSICAL_DIR, exist_ok=True)
 logging.info(f"Thư mục lưu trữ media: {MEDIA_PHYSICAL_DIR}")
-
 PAGE_STATE_FILE_PATH = os.path.join(PROJECT_ROOT, "scraper_page_state.json")
 CONTROL_STATE_FILE_PATH = get_control_state_path(PROJECT_ROOT)
-
 RUN_DURATION_SECONDS = settings.RUN_DURATION_MINUTES * 60
 PAUSE_DURATION_SECONDS = settings.PAUSE_DURATION_MINUTES * 60
 NUM_PROCESSES = settings.CONCURRENT_SCRAPING_TASKS
 
 
+
 def scrape_day_worker(current_day_to_process: date_type, db_url: str, page_state_file_path: str,media_physical_dir_worker: str):
-    worker_log_name = f"Worker-{current_day_to_process.strftime('%Y-%m-%d')}"
-    log = logging.getLogger(worker_log_name)
-
-    if not log.handlers:
-        log.setLevel(logging.INFO)
-        worker_log_file = os.path.join(LOG_OUTPUT_DIR_PATH, f"worker-{current_day_to_process.strftime('%Y-%m-%d')}.log")
-        file_handler = logging.FileHandler(worker_log_file, mode='a', encoding='utf-8')
-        formatter = logging.Formatter('%(asctime)s - %(process)d - %(levelname)s - %(message)s')
-        file_handler.setFormatter(formatter)
-        log.addHandler(file_handler)
-        log.propagate = False
-
+    log = logging.getLogger(f"Worker-{current_day_to_process.strftime('%Y-%m-%d')}")
     log.info(f"Bắt đầu xử lý ngày: {current_day_to_process}")
     last_processed_page = 0
+
+    def state_updater_in_memory(page_just_completed: int):
+        nonlocal last_processed_page
+        last_processed_page = page_just_completed
+        log.info(f"Đã xử lý xong trang {page_just_completed}")
 
     try:
         worker_engine = create_engine(db_url, pool_pre_ping=True)
         scraper = ScraperService(media_dir=media_physical_dir_worker)
         day_key = f"brands_{current_day_to_process.strftime('%Y-%m-%d')}_{current_day_to_process.strftime('%Y-%m-%d')}"
-        def state_updater_in_memory(page_just_completed: int):
-            nonlocal last_processed_page
-            last_processed_page = page_just_completed
-            log.info(f"Đã xử lý xong trang {page_just_completed}")
 
         initial_page_for_this_day = load_scrape_state(page_state_file_path, day_key)
 
@@ -98,11 +73,37 @@ def scrape_day_worker(current_day_to_process: date_type, db_url: str, page_state
         log.info(f"Hoàn thành xử lý ngày {current_day_to_process} với kết quả: {scrape_result.get('status')}")
         scrape_result['last_processed_page'] = last_processed_page
         return {"date": current_day_to_process, "result": scrape_result}
-    #//
+
+    except CustomScrapingError as cse:
+        import traceback
+        log.error(f"Lỗi scraping đã được định danh cho ngày {cse.day} tại trang {cse.page}: {cse.original_error}",
+                  exc_info=True)
+
+        error_logger = logging.getLogger('CrawlErrorLogger')
+        log_extra_data = {'day': cse.day, 'page': cse.page}
+        error_content = str(cse.original_error).replace('\n', ' ').replace('\r', '')
+        error_logger.error(error_content, extra=log_extra_data)
+
+        error_details = {
+            "status": "worker_crash",
+            "message": str(cse),
+            "traceback": traceback.format_exc(),
+            "last_processed_page": cse.page - 1 if cse.page > 0 else 0,
+            "brands_processed_count": 0
+        }
+        return {"date": current_day_to_process, "result": error_details}
 
     except Exception as e:
         import traceback
-        log.error(f"Lỗi nghiêm trọng trong worker cho ngày {current_day_to_process}: {e}", exc_info=True)
+        log.error(f"Lỗi không xác định trong worker cho ngày {current_day_to_process}: {e}", exc_info=True)
+
+        error_logger = logging.getLogger('CrawlErrorLogger')
+        page_at_error = last_processed_page + 1
+        day_str = current_day_to_process.strftime('%Y-%m-%d')
+        log_extra_data = {'day': day_str, 'page': page_at_error}
+        error_content = str(e).replace('\n', ' ').replace('\r', '')
+        error_logger.error(error_content, extra=log_extra_data)
+
         error_details = {
             "status": "worker_crash",
             "message": str(e),
@@ -111,6 +112,7 @@ def scrape_day_worker(current_day_to_process: date_type, db_url: str, page_state
             "brands_processed_count": 0
         }
         return {"date": current_day_to_process, "result": error_details}
+
     finally:
         if 'worker_engine' in locals() and worker_engine:
             worker_engine.dispose()
