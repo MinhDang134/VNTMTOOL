@@ -2,7 +2,6 @@ import asyncio
 from datetime import datetime, timedelta, date as date_type
 import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from multiprocessing import Manager
 from functools import partial
 from sqlmodel import create_engine
 from src.tools.config import settings
@@ -99,6 +98,7 @@ def scrape_day_worker(current_day_to_process: date_type, db_url: str, page_state
         log.info(f"Hoàn thành xử lý ngày {current_day_to_process} với kết quả: {scrape_result.get('status')}")
         scrape_result['last_processed_page'] = last_processed_page
         return {"date": current_day_to_process, "result": scrape_result}
+    #//
 
     except Exception as e:
         import traceback

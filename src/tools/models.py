@@ -8,8 +8,8 @@ from sqlalchemy import Column, Date, Integer
 class Brand(SQLModel, table=True):
     __tablename__ = "brand"
     id: Optional[int] = Field(default=None, primary_key=True)
-    application_number: str = Field(index=True)
-    application_date: date = Field(sa_column=Column(Date))
+    application_number: str = Field(primary_key=True, index=True)
+    application_date: date = Field(sa_column=Column(Date, primary_key=True))
     brand_name: str = Field(index=True)
     image_url: str
     product_group: str
