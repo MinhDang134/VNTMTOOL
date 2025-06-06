@@ -1,18 +1,13 @@
+import os
 import asyncio
-from sqlalchemy import create_engine
-
 import logging
+from sqlalchemy import create_engine
 from run_scraper import MEDIA_PHYSICAL_DIR, main_async_runner
 from src.tools.config import settings
 from src.tools.database import get_session
 from src.tools.service import ScraperService
 
 ai_logger = logging.getLogger("AIInteractionHandler")
-import logging
-import os
-import asyncio
-
-
 LOG_OUTPUT_DIR_PATH_AI = "/home/minhdangpy134/Logvntmtool"
 LOG_FILE_NAME_AI = "ai_handler_activity.txt"
 
@@ -20,7 +15,6 @@ try:
     os.makedirs(LOG_OUTPUT_DIR_PATH_AI, exist_ok=True)
 except OSError as e:
     print(f"Lỗi khi tạo thư mục log {LOG_OUTPUT_DIR_PATH_AI}: {e}")
-
 LOG_FILE_PATH_AI = os.path.join(LOG_OUTPUT_DIR_PATH_AI, LOG_FILE_NAME_AI)
 
 
@@ -35,9 +29,7 @@ logging.basicConfig(
 
 
 async def handle_ai_brand_search_and_update_count(brand_name_from_ai: str):
-    ai_logger.info(
-        f"🤖 AI Handler: Nhận yêu cầu tìm, cập nhật count và lấy thông tin cho nhãn hiệu: '{brand_name_from_ai}'")
-
+    ai_logger.info(f"🤖 AI Handler: Nhận yêu cầu tìm, cập nhật count và lấy thông tin cho nhãn hiệu: '{brand_name_from_ai}'")
     if not brand_name_from_ai:
         ai_logger.warning("🤖 AI Handler: Tên nhãn hiệu rỗng, không xử lý.")
         return {"status": "error", "message": "Brand name is empty", "data": []}
@@ -79,8 +71,6 @@ async def handle_ai_brand_search_and_update_count(brand_name_from_ai: str):
             ai_handler_engine.dispose()
             ai_logger.debug("🤖 AI Handler: Database engine disposed.")
 
-
-
 async def example_ai_trigger():
     brand_to_search = "Bemori"
     result = await handle_ai_brand_search_and_update_count(brand_to_search)
@@ -91,7 +81,6 @@ async def example_ai_trigger():
             ai_logger.info(f"    Item {idx + 1}: {brand_item}")
     else:
         ai_logger.info(f"  Data: []")
-
 
 if __name__ == "__main__":
     try:

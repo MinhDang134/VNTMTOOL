@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scraper Dashboard</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background-color: #f4f7f9; color: #333; margin: 0; padding: 2em; }
+        .container { max-width: 900px; margin: auto; background: white; padding: 2em; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+        h1, h2 { color: #2c3e50; border-bottom: 2px solid #e0e0e0; padding-bottom: 10px; }
+        .summary-box { background-color: #ecf0f1; padding: 15px; border-radius: 5px; margin-bottom: 20px; font-size: 1.2em; }
+        .summary-box strong { color: #2980b9; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #ddd; }
+        th { background-color: #3498db; color: white; }
+        tr:nth-child(even) { background-color: #f2f2f2; }
+        .footer { text-align: center; margin-top: 20px; font-size: 0.9em; color: #7f8c8d; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Bảng điều khiển Trạng thái Scraper</h1>
+
+        <div class="summary-box">
+            Ngày cuối cùng hoàn thành 100%: <strong id="last-completed-day">Đang tải...</strong>
+        </div>
+
+        <h2>Các ngày đang xử lý</h2>
+        <div id="in-progress-container">
+            <p>Đang tải...</p>
+        </div>
+
+        <p class="footer">Cập nhật lần cuối lúc: <span id="last-updated"></span></p>
+    </div>
+
+    <script>
+        function fetchStatus() {
+            fetch('/api/status')
+                .then(response => response.json())
+                .then(data => {
+                    // Cập nhật ngày hoàn thành
+                    document.getElementById('last-completed-day').textContent = data.last_completed_day;
+
+                    // Cập nhật bảng các ngày đang xử lý
+                    const container = document.getElementById('in-progress-container');
+                    if (data.in_progress_tasks.length === 0) {
+                        container.innerHTML = '<p>Không có ngày nào đang được xử lý.</p>';
+                    } else {
+                        let tableHtml = '<table><thead><tr><th>Ngày</th><th>Trang cuối hoàn thành</th><th>Cập nhật lần cuối</th></tr></thead><tbody>';
+                        data.in_progress_tasks.forEach(task => {
+                            tableHtml += `<tr><td>${task.day}</td><td>${task.last_page}</td><td>${task.last_update}</td></tr>`;
+                        });
+                        tableHtml += '</tbody></table>';
+                        container.innerHTML = tableHtml;
+                    }
+
+                    // Cập nhật thời gian
+                    document.getElementById('last-updated').textContent = data.dashboard_updated_at;
+                })
+                .catch(error => {
+                    console.error('Lỗi khi tải trạng thái:', error);
+                    document.getElementById('in-progress-container').innerHTML = '<p style="color: red;">Không thể tải trạng thái từ server.</p>';
+                });
+        }
+
+        // Tự động gọi hàm fetchStatus mỗi 5 giây
+        setInterval(fetchStatus, 5000);
+
+        // Gọi lần đầu tiên ngay khi tải trang
+        document.addEventListener('DOMContentLoaded', fetchStatus);
+    </script>
+</body>
+</html>
