@@ -11,7 +11,7 @@ from src.tele_bot.telegram_notifier import TelegramNotifier
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime, timedelta, date as date_type
 from src.tools.database import get_session, ensure_partition_exists, setup_database_schema
-from src.tools.state_manager import (load_scrape_state, save_scrape_state,load_control_state, save_control_state, get_control_state_path,clear_page_state_for_day)
+from src.tools.state_manager import (init_db,load_scrape_state,save_page_state, load_control_state,save_control_state,get_db_path,clear_page_state_for_day)
 
 
 
@@ -28,15 +28,15 @@ PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 MEDIA_PHYSICAL_DIR = os.path.join(PROJECT_ROOT, "media_root", "brand_images")
 os.makedirs(MEDIA_PHYSICAL_DIR, exist_ok=True)
 logging.info(f"Thư mục lưu trữ media: {MEDIA_PHYSICAL_DIR}")
-PAGE_STATE_FILE_PATH = os.path.join(PROJECT_ROOT, "scraper_page_state.json")
-CONTROL_STATE_FILE_PATH = get_control_state_path(PROJECT_ROOT)
+STATE_DB_PATH = get_db_path(PROJECT_ROOT)
+init_db(STATE_DB_PATH)
 RUN_DURATION_SECONDS = settings.RUN_DURATION_MINUTES * 60
 PAUSE_DURATION_SECONDS = settings.PAUSE_DURATION_MINUTES * 60
 NUM_PROCESSES = settings.CONCURRENT_SCRAPING_TASKS
 
 
 
-def scrape_day_worker(current_day_to_process: date_type, db_url: str, page_state_file_path: str,media_physical_dir_worker: str):
+def scrape_day_worker(current_day_to_process: date_type, db_url: str,media_physical_dir_worker: str):
     log = logging.getLogger(f"Worker-{current_day_to_process.strftime('%Y-%m-%d')}")
     log.info(f"Bắt đầu xử lý ngày: {current_day_to_process}")
     last_processed_page = 0
@@ -45,13 +45,14 @@ def scrape_day_worker(current_day_to_process: date_type, db_url: str, page_state
         nonlocal last_processed_page
         last_processed_page = page_just_completed
         log.info(f"Đã xử lý xong trang {page_just_completed}")
+        save_page_state(STATE_DB_PATH, day_key, page_just_completed)
 
     try:
         worker_engine = create_engine(db_url, pool_pre_ping=True)
         scraper = ScraperService(media_dir=media_physical_dir_worker)
         day_key = f"brands_{current_day_to_process.strftime('%Y-%m-%d')}_{current_day_to_process.strftime('%Y-%m-%d')}"
 
-        initial_page_for_this_day = load_scrape_state(page_state_file_path, day_key)
+        initial_page_for_this_day = load_scrape_state(STATE_DB_PATH, day_key)
 
         scrape_result = {}
         loop = asyncio.new_event_loop()
@@ -118,7 +119,7 @@ def scrape_day_worker(current_day_to_process: date_type, db_url: str, page_state
             worker_engine.dispose()
 
 def get_next_day_to_process() -> date_type:
-    control_state = load_control_state(CONTROL_STATE_FILE_PATH)
+    control_state = load_control_state(STATE_DB_PATH)
     last_completed_str = control_state.get("last_fully_completed_day")
 
     if last_completed_str:
@@ -182,15 +183,15 @@ async def daily_scraping_manager():
 
 
                         if last_page > 0:
-                            save_scrape_state(PAGE_STATE_FILE_PATH, day_key, last_page, None)
+                            save_page_state(STATE_DB_PATH, day_key, last_page)
 
                         logging.info(
                             f"Worker cho ngày {processed_date.strftime('%Y-%m-%d')} đã HOÀN THÀNH. Status: {scrape_status}, LastPage: {last_page}")
 
                         if scrape_status in ["completed_all_pages", "no_data_on_first_page"]:
                             logging.info(f"✅ HOÀN TẤT XỬ LÝ DỮ LIỆU CHO NGÀY: {processed_date.strftime('%Y-%m-%d')}.")
-                            save_control_state(CONTROL_STATE_FILE_PATH, processed_date)
-                            clear_page_state_for_day(PAGE_STATE_FILE_PATH, processed_date, None)
+                            save_control_state(STATE_DB_PATH, processed_date)
+                            clear_page_state_for_day(STATE_DB_PATH, processed_date)
                             days_processed_in_this_session += 1
 
                         elif scrape_status == "worker_crash":
@@ -220,7 +221,6 @@ async def daily_scraping_manager():
                     worker_func_partial = partial(
                         scrape_day_worker,
                         db_url=settings.DATABASE_URL,
-                        page_state_file_path=PAGE_STATE_FILE_PATH,
                         media_physical_dir_worker=MEDIA_PHYSICAL_DIR
                     )
                     future = executor.submit(worker_func_partial, current_day_to_process)
@@ -249,14 +249,14 @@ async def daily_scraping_manager():
 
                         day_key = f"brands_{processed_date.strftime('%Y-%m-%d')}_{processed_date.strftime('%Y-%m-%d')}"
                         if last_page > 0:
-                            save_scrape_state(PAGE_STATE_FILE_PATH, day_key, last_page, None)
+                            save_page_state(STATE_DB_PATH, day_key, last_page)
 
                         logging.info(
                             f"Worker (sau giờ) cho ngày {processed_date.strftime('%Y-%m-%d')} đã HOÀN THÀNH. Status: {scrape_status}, LastPage: {last_page}")
 
                         if scrape_status in ["completed_all_pages", "no_data_on_first_page"]:
-                            save_control_state(CONTROL_STATE_FILE_PATH, processed_date)
-                            clear_page_state_for_day(PAGE_STATE_FILE_PATH, processed_date, None)
+                            save_control_state(STATE_DB_PATH, processed_date)
+                            clear_page_state_for_day(STATE_DB_PATH, processed_date)
                             days_processed_in_this_session += 1
 
                         elif scrape_status == "worker_crash":
@@ -265,7 +265,6 @@ async def daily_scraping_manager():
                                 f"💀 Worker (sau giờ) cho ngày {processed_date.strftime('%Y-%m-%d')} bị CRASH. Lý do: {message}")
                             error_title = f"Worker (sau giờ) CRASHed on day {processed_date.strftime('%Y-%m-%d')}"
                             error_message = TelegramNotifier.format_error_message(error_title, traceback_str)
-                            # ĐÃ SỬA: Thêm use_proxy=True
                             TelegramNotifier.send_message(error_message, use_proxy=True, is_error=True)
 
                     except Exception as e:
@@ -274,7 +273,6 @@ async def daily_scraping_manager():
                             exc_info=True)
                         error_title = f"Lỗi MANAGER khi xử lý kết quả (sau giờ) ngày {processed_date.strftime('%Y-%m-%d')}"
                         error_message = TelegramNotifier.format_error_message(error_title, e)
-                        # ĐÃ SỬA: Thêm use_proxy=True
                         TelegramNotifier.send_message(error_message, use_proxy=True, is_error=True)
                 active_futures.clear()
 
