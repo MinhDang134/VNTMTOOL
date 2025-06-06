@@ -98,6 +98,7 @@ def scrape_day_worker(current_day_to_process: date_type, db_url: str, page_state
         log.info(f"Hoàn thành xử lý ngày {current_day_to_process} với kết quả: {scrape_result.get('status')}")
         scrape_result['last_processed_page'] = last_processed_page
         return {"date": current_day_to_process, "result": scrape_result}
+    #//
 
     except Exception as e:
         import traceback
