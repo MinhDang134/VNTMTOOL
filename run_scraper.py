@@ -2,7 +2,6 @@ import asyncio
 from datetime import datetime, timedelta, date as date_type
 import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from multiprocessing import Manager
 from functools import partial
 from sqlmodel import create_engine
 from src.tools.config import settings
