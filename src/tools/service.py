@@ -5,7 +5,6 @@ import httpx
 from typing import List, Optional, Callable, Dict, Any    
 from datetime import datetime, timezone, date as date_type, timedelta
 from bs4 import BeautifulSoup
-# from datetime import datetime, timezone    (Đã có ở trên)
 import asyncio
 from src.tools.models import Brand
 from src.tools.config import settings
@@ -163,7 +162,7 @@ class ScraperService:
                         timeout=httpx.Timeout(settings.REQUEST_TIMEOUT),
                         verify=settings.SSL_VERIFY_REQUEST,
                         follow_redirects=True,
-                        proxies=proxies_config
+                        # proxies=proxies_config
                 ) as client:
                     logging.debug(
                         f"Making request to {url} (Attempt {attempt + 1}/{effective_max_retries}) with proxy {current_proxy or 'None'}")
@@ -312,7 +311,7 @@ class ScraperService:
                             f"nằm ngoài khoảng đang scrape ({start_date.strftime('%Y-%m-%d')} - {end_date.strftime('%Y-%m-%d')}). Bỏ qua.")
                         continue
 
-                    # ensure_partition_exists(parsed_application_date)    (Đã được chuyển ra ngoài worker function trong main.py)
+
 
                     brand_name_tag = row.select_one("td:nth-child(4) label")
                     brand_name = brand_name_tag.text.strip() if brand_name_tag else ""
@@ -440,6 +439,7 @@ class ScraperService:
         logger = logging.getLogger(f"{self.__class__.__name__}.check_pending_brands")
         logger.info("Bắt đầu kiểm tra các đơn có trạng thái 'Đang giải quyết'...")
         one_month_ago = datetime.now(timezone.utc) - timedelta(days=30)
+        logger.info(f"Giá trị 'one_month_ago' được tính toán: {one_month_ago.isoformat()}")
         statement = select(Brand).where(
             Brand.status == "Đang giải quyết",
             or_(

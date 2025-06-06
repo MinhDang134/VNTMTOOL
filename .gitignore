@@ -32,7 +32,7 @@ nbproject/ # NetBeans
 *.DS_Store # macOS
 Thumbs.db # Windows
 
-# Bỏ qua các file log
+
 *.log
 logs/
 npm-debug.log*
@@ -41,14 +41,13 @@ yarn-error.log*
 lerna-debug.log*
 pnpm-debug.log*
 
-# Bỏ qua các file tạm thời
+
 *.tmp
 *.temp
 *.swp # Vim swap file
 *~ # Backup files
 
-# Bỏ qua các file môi trường (chứa thông tin nhạy cảm)
-# QUAN TRỌNG: Luôn luôn thêm file .env.example hoặc tương tự vào Git để người khác biết cần cấu hình gì.
+
 .env
 scraper_state.json
 scraper_activity.log
@@ -149,28 +148,3 @@ coverage/
 ehthumbs.db
 Desktop.ini
 
-# Bỏ qua các file upload/media (nếu không muốn đưa lên repo)
-# uploads/
-# media/
-
-# Các file cấu hình local khác
-# Ví dụ:
-# local_settings.py
-
-# Các file database local
-# *.sqlite
-# *.db
-
-# Nếu dùng Terraform
-# .terraform/
-# *.tfstate
-# *.tfstate.backup
-# .terraform.lock.hcl
-
-# Nếu dùng Docker
-# Dockerfile.local (nếu có)
-# .dockerignore (đã có file riêng cho Docker rồi, nhưng có thể thêm nếu cần)
-
-# Thêm các file hoặc thư mục cụ thể khác của dự án bạn vào đây
-# my_custom_file.txt
-# my_custom_folder/
