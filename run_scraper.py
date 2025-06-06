@@ -263,7 +263,6 @@ async def daily_scraping_manager():
                                 f"💀 Worker (sau giờ) cho ngày {processed_date.strftime('%Y-%m-%d')} bị CRASH. Lý do: {message}")
                             error_title = f"Worker (sau giờ) CRASHed on day {processed_date.strftime('%Y-%m-%d')}"
                             error_message = TelegramNotifier.format_error_message(error_title, traceback_str)
-                            # ĐÃ SỬA: Thêm use_proxy=True
                             TelegramNotifier.send_message(error_message, use_proxy=True, is_error=True)
 
                     except Exception as e:
@@ -272,7 +271,6 @@ async def daily_scraping_manager():
                             exc_info=True)
                         error_title = f"Lỗi MANAGER khi xử lý kết quả (sau giờ) ngày {processed_date.strftime('%Y-%m-%d')}"
                         error_message = TelegramNotifier.format_error_message(error_title, e)
-                        # ĐÃ SỬA: Thêm use_proxy=True
                         TelegramNotifier.send_message(error_message, use_proxy=True, is_error=True)
                 active_futures.clear()
 

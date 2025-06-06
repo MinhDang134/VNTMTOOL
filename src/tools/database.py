@@ -41,10 +41,8 @@ def get_session(engine_to_use: Engine = db_engine) -> Generator[Session, None, N
 
 def bulk_create(session: Session, objects: list[SQLModel]) -> None:
     try:
-        session.add_all(objects)  
-        # session.commit()   (Commit sẽ được xử lý bởi get_session context manager)
+        session.add_all(objects)
     except Exception as e:
-        # session.rollback()   (Rollback sẽ được xử lý bởi get_session context manager)
         logging.error(f"Bulk create error: {str(e)}")
         raise
 
@@ -95,18 +93,13 @@ def ensure_partition_exists(date: datetime,engine_to_use: Engine = db_engine) ->
 
 def setup_database_schema():
     engine = create_engine(settings.DATABASE_URL)
-
-    # Lấy DB_USER từ settings để sử dụng cho OWNER, nếu có. Nếu không, mặc định là 'postgres' hoặc user trong DATABASE_URL.
-    # Ví dụ, nếu DATABASE_URL là postgresql://minhdangpy134:password@... thì user là minhdangpy134
-    # Tạm thời lấy từ DATABASE_URL nếu settings không có DB_USER riêng.
     db_user_for_owner = settings.DB_USER if settings.DB_USER else settings.DATABASE_URL.split('://')[1].split(':')[0]
 
-    # Kiểm tra xem sequence 'brand_id_seq' có tồn tại không, nếu không thì tạo
     create_sequence_sql = """
     CREATE SEQUENCE IF NOT EXISTS public.brand_id_seq;
     """
 
-    # DDL để tạo bảng cha partitioned 'brand'
+
     create_parent_table_sql = f"""
     CREATE TABLE public.brand (
         id integer NOT NULL DEFAULT nextval('public.brand_id_seq'::regclass),
@@ -126,28 +119,23 @@ def setup_database_schema():
     ) PARTITION BY RANGE (application_date);
     """
 
-    # SQL để tạo các indexes
+
     create_indexes_sql = """
                          CREATE INDEX IF NOT EXISTS ix_brand_application_number ON public.brand (application_number);
                          CREATE INDEX IF NOT EXISTS ix_brand_brand_name ON public.brand (brand_name); \
                          """
 
-    # SQL để đổi OWNER của bảng
+
     alter_owner_sql = f"""
     ALTER TABLE IF EXISTS public.brand OWNER TO "{db_user_for_owner}";
     """
-    # (Trong DDL bạn gửi, owner của partition là minhdangpy134, owner của bảng cha là postgres)
-    # Thống nhất owner là user kết nối DB (minhdangpy134) sẽ tốt hơn.
 
     with engine.connect() as connection:
         try:
-            # Kiểm tra xem bảng 'brand' có tồn tại và có phải là partitioned table không
             inspector = inspect(connection)
             table_exists = 'brand' in inspector.get_table_names(schema='public')
             is_partitioned = False
             if table_exists:
-                # Cách kiểm tra partitioning có thể phức tạp hơn, đây là một cách đơn giản
-                # Dựa vào việc truy vấn pg_catalog.pg_class
                 partition_check_sql = text("""
                                            SELECT c.relkind
                                            FROM pg_catalog.pg_class c
@@ -156,7 +144,7 @@ def setup_database_schema():
                                              AND n.nspname = 'public';
                                            """)
                 result = connection.execute(partition_check_sql).scalar_one_or_none()
-                if result == 'p':  # 'p' nghĩa là partitioned table
+                if result == 'p':
                     is_partitioned = True
 
             if table_exists and is_partitioned:
@@ -190,4 +178,4 @@ def setup_database_schema():
         except Exception as e:
             logger.error(f"❌ Lỗi nghiêm trọng khi thiết lập schema database: {e}", exc_info=True)
             connection.rollback()
-            raise  # Ném lại lỗi để dừng ứng dụng nếu schema không thể thiết lập
+            raise

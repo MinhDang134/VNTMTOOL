@@ -5,7 +5,6 @@ import httpx
 from typing import List, Optional, Callable, Dict, Any    
 from datetime import datetime, timezone, date as date_type, timedelta
 from bs4 import BeautifulSoup
-# from datetime import datetime, timezone    (Đã có ở trên)
 import asyncio
 from src.tools.models import Brand
 from src.tools.config import settings
