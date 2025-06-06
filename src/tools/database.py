@@ -89,7 +89,7 @@ def setup_database_schema():
     CREATE SEQUENCE IF NOT EXISTS public.brand_id_seq;
     """
 
-    # DDL để tạo bảng cha partitioned 'brand'
+
     create_parent_table_sql = f"""
     CREATE TABLE public.brand (
         id integer NOT NULL DEFAULT nextval('public.brand_id_seq'::regclass),
@@ -109,28 +109,23 @@ def setup_database_schema():
     ) PARTITION BY RANGE (application_date);
     """
 
-    # SQL để tạo các indexes
+
     create_indexes_sql = """
                          CREATE INDEX IF NOT EXISTS ix_brand_application_number ON public.brand (application_number);
                          CREATE INDEX IF NOT EXISTS ix_brand_brand_name ON public.brand (brand_name); \
                          """
 
-    # SQL để đổi OWNER của bảng
+
     alter_owner_sql = f"""
     ALTER TABLE IF EXISTS public.brand OWNER TO "{db_user_for_owner}";
     """
-    # (Trong DDL bạn gửi, owner của partition là minhdangpy134, owner của bảng cha là postgres)
-    # Thống nhất owner là user kết nối DB (minhdangpy134) sẽ tốt hơn.
 
     with engine.connect() as connection:
         try:
-            # Kiểm tra xem bảng 'brand' có tồn tại và có phải là partitioned table không
             inspector = inspect(connection)
             table_exists = 'brand' in inspector.get_table_names(schema='public')
             is_partitioned = False
             if table_exists:
-                # Cách kiểm tra partitioning có thể phức tạp hơn, đây là một cách đơn giản
-                # Dựa vào việc truy vấn pg_catalog.pg_class
                 partition_check_sql = text("""
                                            SELECT c.relkind
                                            FROM pg_catalog.pg_class c
@@ -139,7 +134,7 @@ def setup_database_schema():
                                              AND n.nspname = 'public';
                                            """)
                 result = connection.execute(partition_check_sql).scalar_one_or_none()
-                if result == 'p':  # 'p' nghĩa là partitioned table
+                if result == 'p':
                     is_partitioned = True
 
             if table_exists and is_partitioned:
@@ -173,4 +168,4 @@ def setup_database_schema():
         except Exception as e:
             logger.error(f"❌ Lỗi nghiêm trọng khi thiết lập schema database: {e}", exc_info=True)
             connection.rollback()
-            raise  # Ném lại lỗi để dừng ứng dụng nếu schema không thể thiết lập
+            raise

@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     MIN_DELAY_CHECK_PENDING: float = float(os.getenv("MIN_DELAY_CHECK_PENDING"))
     MAX_DELAY_CHECK_PENDING: float = float(os.getenv("MAX_DELAY_CHECK_PENDING"))
     MEDIA_BRAND_IMAGES_SUBPATH : Optional[str] = os.getenv("MEDIA_BRAND_IMAGES_SUBPATH")
-#
+##
     RUN_DURATION_MINUTES: int = int(os.getenv("RUN_DURATION_MINUTES"))
     PAUSE_DURATION_MINUTES: int = int(os.getenv("PAUSE_DURATION_MINUTES"))
 
