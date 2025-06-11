@@ -11,7 +11,8 @@ from src.tele_bot.telegram_notifier import TelegramNotifier
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime, timedelta, date as date_type
 from src.tools.database import get_session, ensure_partition_exists, setup_database_schema
-from src.tools.state_manager import (init_db,load_scrape_state,save_page_state, load_control_state,save_control_state,get_db_path,clear_page_state_for_day)
+from src.tools.state_manager import (init_db, load_scrape_state, save_page_state, load_control_state,
+                                     save_control_state, get_db_path, clear_page_state_for_day, get_in_progress_day)
 
 
 
@@ -119,6 +120,12 @@ def scrape_day_worker(current_day_to_process: date_type, db_url: str,media_physi
             worker_engine.dispose()
 
 def get_next_day_to_process() -> date_type:
+    in_progress_day = get_in_progress_day(STATE_DB_PATH)
+    if in_progress_day:
+        return in_progress_day
+
+
+
     control_state = load_control_state(STATE_DB_PATH)
     last_completed_str = control_state.get("last_fully_completed_day")
 
@@ -127,11 +134,12 @@ def get_next_day_to_process() -> date_type:
             last_completed_date = datetime.strptime(last_completed_str, "%Y-%m-%d").date()
             next_day = last_completed_date + timedelta(days=1)
             logging.info(
-                f"Ngày cuối cùng hoàn thành được ghi nhận: {last_completed_str}. Ngày tiếp theo để xử lý: {next_day.strftime('%Y-%m-%d')}")
+                f"Không có ngày nào đang dang dở. Ngày cuối cùng hoàn thành: {last_completed_str}. Ngày tiếp theo để xử lý: {next_day.strftime('%Y-%m-%d')}")
             return next_day
         except ValueError:
             logging.warning(
                 f"Định dạng ngày trong file trạng thái điều khiển không hợp lệ: '{last_completed_str}'. Sẽ bắt đầu từ ngày cấu hình.")
+
 
     start_date = date_type(
         settings.INITIAL_SCRAPE_START_YEAR,
@@ -139,7 +147,7 @@ def get_next_day_to_process() -> date_type:
         settings.INITIAL_SCRAPE_START_DAY
     )
     logging.info(
-        f"Không có trạng thái ngày hoàn thành hợp lệ. Bắt đầu từ ngày cấu hình mặc định: {start_date.strftime('%Y-%m-%d')}")
+        f"Không có trạng thái. Bắt đầu từ ngày cấu hình mặc định: {start_date.strftime('%Y-%m-%d')}")
     return start_date
 
 def get_overall_end_date() -> date_type:
@@ -157,7 +165,7 @@ def get_overall_end_date() -> date_type:
 
 async def daily_scraping_manager():
     logging.info("Khởi tạo Scraping Manager với Multiprocessing.")
-
+    # đầu tiên sẽ lấy cái nagayf giờ hiện tại nàyrepresentative
     with ProcessPoolExecutor(max_workers=NUM_PROCESSES) as executor:
         current_day_to_process = get_next_day_to_process()
         overall_end_date = get_overall_end_date()
@@ -297,7 +305,7 @@ async def main_async_runner():
     await daily_scraping_manager()
 
 if __name__ == "__main__":
-    try:
+    try: # đầu tiên sẽ là giử tin nhắn thông qua telegarm
         TelegramNotifier.send_message("✅ <b>Tool Scraper đã bắt đầu chạy.</b>", use_proxy=True)
         asyncio.run(main_async_runner())
     except KeyboardInterrupt:

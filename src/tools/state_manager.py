@@ -4,7 +4,7 @@ import sqlite3
 import os
 import logging
 from datetime import date, datetime
-from typing import Dict
+from typing import Dict, Optional
 
 _connection = None
 
@@ -123,6 +123,19 @@ def load_control_state(db_path: str) -> Dict[str, str]:
         logging.error(f"[SQLite] Lỗi khi tải control_state '{key}': {e}. Trả về trạng thái mặc định.", exc_info=True)
         return {key: None}
 
-def get_control_state_path(project_root: str) -> str:
-    # Hàm này giờ chỉ là một alias để tương thích, nó trả về đường dẫn DB chung
-    return get_db_path(project_root)
+def get_in_progress_day(db_path: str) -> Optional[date]:
+    try:
+        conn = get_connection(db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT date_range_key FROM page_state ORDER BY updated_at DESC LIMIT 5")
+        result = cursor.fetchone()
+        if result:
+            date_range_key = result[0]
+            day_str = date_range_key.split('_')[1]
+            in_progress_date = datetime.strptime(day_str, "%Y-%m-%d").date()
+            logging.info(f"[SQLite] Tìm thấy ngày đang xử lý dở dang: {day_str}. Sẽ tiếp tục từ ngày này.")
+            return in_progress_date
+        return None
+    except (sqlite3.Error, IndexError, ValueError) as e:
+        logging.error(f"[SQLite] Lỗi khi kiểm tra ngày đang xử lý dở: {e}", exc_info=True)
+        return None
