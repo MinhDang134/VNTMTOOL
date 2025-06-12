@@ -25,8 +25,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . ${APP_HOME}/
 
-# Tạo các thư mục cần thiết cho media, logs, và data (nếu state files không nằm ở root)
-# Bạn cần đảm bảo ứng dụng có quyền ghi vào các thư mục này.
+
 RUN mkdir -p ${APP_HOME}/media_root/brand_images
 RUN mkdir -p ${APP_HOME}/logs
 

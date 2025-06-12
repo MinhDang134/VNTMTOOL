@@ -3,8 +3,8 @@ import os
 import asyncio
 import logging
 from src.tools.config import settings
-
-
+from src.tools.database import get_session
+from src.tools.service import ScraperService
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR_PATH = os.path.dirname(SCRIPT_DIR)
@@ -23,8 +23,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 async def main_update_statuses():
-    from src.tools.database import get_session
-    from src.tools.service import ScraperService
+    # from src.tools.database import get_session
+    # from src.tools.service import ScraperService
     logger.info("🚀 Bắt đầu quy trình cập nhật trạng thái đơn theo lịch.")
 
     if hasattr(settings, 'MEDIA_BRAND_IMAGES_SUBPATH'):
