@@ -121,7 +121,6 @@ def load_control_state(db_path: str) -> Dict[str, str]:
         logging.error(f"[SQLite] Lỗi khi tải control_state '{key}': {e}. Trả về trạng thái mặc định.", exc_info=True)
         return {key: None}
 
-
 def get_all_in_progress_days(db_path: str) -> List[date]:
     dates = []
     try:
