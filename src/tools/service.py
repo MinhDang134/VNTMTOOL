@@ -145,8 +145,6 @@ class ScraperService:
     async def make_request(self, url: str, max_retries: Optional[int] = None) -> Optional[httpx.Response]:
         effective_max_retries = max_retries if max_retries is not None else settings.MAX_REQUEST_RETRIES
         current_proxy = self.get_next_proxy()
-        proxies_config = {"http://": current_proxy, "https://": current_proxy} if current_proxy else None
-
         for attempt in range(effective_max_retries):
             try:
                 min_delay_req = settings.MIN_REQUEST_DELAY
@@ -161,7 +159,6 @@ class ScraperService:
                         timeout=httpx.Timeout(settings.REQUEST_TIMEOUT),
                         verify=settings.SSL_VERIFY_REQUEST,
                         follow_redirects=True,
-                        # proxies=proxies_config
                 ) as client:
                     logging.debug(
                         f"Making request to {url} (Attempt {attempt + 1}/{effective_max_retries}) with proxy {current_proxy or 'None'}")
@@ -181,7 +178,6 @@ class ScraperService:
                     logger_service.error(
                         f"Lỗi HTTP nghiêm trọng {status_code} for {url}. Thay đổi proxy và thử lại nếu có thể.")
                     current_proxy = self.get_next_proxy()
-                    proxies_config = {"http://": current_proxy, "https://": current_proxy} if current_proxy else None
                     if attempt == effective_max_retries - 1: logger_service.error(
                         f"Thử lại lần cuối thất bại với lỗi {status_code} cho {url}."); return None
                     await asyncio.sleep(random.uniform(5, 10))
@@ -194,8 +190,6 @@ class ScraperService:
                 logger_service.warning(
                     f"Yêu cầu Lỗi (Cố gắng {attempt + 1}/{effective_max_retries}) for {url}: {str(e_req)}")
                 current_proxy = self.get_next_proxy()
-                proxies_config = {"http://": current_proxy,
-                                  "https": current_proxy} if current_proxy else None
                 if attempt == effective_max_retries - 1: logger_service.error(
                     f"Thử lại lần cuối thất bại cho {url} với lỗi request: {str(e_req)}."); return None
                 await asyncio.sleep(random.uniform(3, 7))
@@ -477,7 +471,7 @@ class ScraperService:
                 continue
 
             url = f"https://vietnamtrademark.net/search?q={brand.application_number.strip()}"
-            logger.info(f"🌍 Gọi đến VietnamTrademark: {url}")
+            logger.info(f"🌍 Gọi đến VietnamTrademark: {url}") # đến đây rồi 
 
             response = await self.make_request(url)
             if not response:
